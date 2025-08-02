@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import io from 'socket.io-client';
 
-const SIGNALING_SERVER_URL = 'http://localhost:8000'; // change to your server URL
+const SIGNALING_SERVER_URL = 'https://chatter-backend-4i7g.onrender.com'; // change to your server URL
 const ICE_SERVERS = {
   iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
 };
