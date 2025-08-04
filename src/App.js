@@ -2,7 +2,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import io from 'socket.io-client';
 
-const SIGNALING_SERVER = 'http://localhost:8000';
+// const SIGNALING_SERVER = 'http://localhost:8000';
+const SIGNALING_SERVER = "https://chatter-frontend-hq9b.onrender.com/";
 const ICE_SERVERS = {
   iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
 };
