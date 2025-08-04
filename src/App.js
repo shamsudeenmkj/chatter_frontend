@@ -1,136 +1,159 @@
 import React, { useRef, useEffect, useState } from 'react';
 import io from 'socket.io-client';
 
-const SIGNALING_SERVER_URL = 'https://chatter-backend-4i7g.onrender.com'; // change to your server URL
-const ICE_SERVERS = {
-  iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-};
+const SIGNALING_SERVER = 'https://chatter-backend-4i7g.onrender.com';
+const ICE_SERVERS = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
-function App() {
-  const localVideoRef = useRef(null);
-  const remoteVideoRef = useRef(null);
-  const socketRef = useRef(null);
-  const peerRef = useRef(null);
-  const localStreamRef = useRef(null);
+const App = () => {
+  const [roomId, setRoomId] = useState('room1');
+  const [isMuted, setIsMuted] = useState(false);
+  const [isVideoOff, setIsVideoOff] = useState(false);
 
-  const [roomId, setRoomId] = useState('testroom');
+  const localVideoRef = useRef();
+  const peersRef = useRef({});
+  const socketRef = useRef();
+  const localStreamRef = useRef();
+
+  const remoteVideosRef = useRef({});
 
   useEffect(() => {
-    // Setup socket
-    socketRef.current = io(SIGNALING_SERVER_URL);
+    socketRef.current = io(SIGNALING_SERVER);
+  try{navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then(stream => {
+      localStreamRef.current = stream;
+      if (localVideoRef.current) localVideoRef.current.srcObject = stream;
 
-    socketRef.current.on('connect', async () => {
-      console.log('Connected to signaling server');
-      await startLocalStream();
-      socketRef.current.emit('join-video-room', roomId);
-    });
+      socketRef.current.emit('join-room', roomId);
 
-    socketRef.current.on('user-connected', async (userId) => {
-      console.log('User connected:', userId);
-      await createOffer(userId);
-    });
+      socketRef.current.on('user-joined', async userId => {
+        const peer = createPeer(userId);
+        peersRef.current[userId] = peer;
 
-    socketRef.current.on('receive-signal', async (data) => {
-      const signal = data.signal;
-      const from = data.from;
+        stream.getTracks().forEach(track => {
+          peer.addTrack(track, stream);
+        });
+      });
 
-      if (signal.type === 'offer') {
-        await handleOffer(signal, from);
-      } else if (signal.type === 'answer') {
-        await peerRef.current.setRemoteDescription(new RTCSessionDescription(signal));
-      } else if (signal.candidate) {
-        await peerRef.current.addIceCandidate(new RTCIceCandidate(signal.candidate));
-      }
-    });
+      socketRef.current.on('signal', async ({ from, signal }) => {
+        let peer = peersRef.current[from];
+        if (!peer) {
+          peer = addPeer(from);
+          peersRef.current[from] = peer;
 
-    return () => socketRef.current.disconnect();
+          stream.getTracks().forEach(track => {
+            peer.addTrack(track, stream);
+          });
+        }
+
+        await peer.setRemoteDescription(new RTCSessionDescription(signal));
+
+        if (signal.type === 'offer') {
+          const answer = await peer.createAnswer();
+          await peer.setLocalDescription(answer);
+          socketRef.current.emit('signal', {
+            to: from,
+            signal: peer.localDescription
+          });
+        }
+      });
+
+      socketRef.current.on('user-left', id => {
+        if (peersRef.current[id]) {
+          peersRef.current[id].close();
+          delete peersRef.current[id];
+        }
+        delete remoteVideosRef.current[id];
+        document.getElementById(id)?.remove();
+      });
+    });}
+    catch(err){
+ console.error('Error accessing media devices:', err.message);
+    alert('Camera/Microphone not accessible: ' + err.message);
+    }
   }, []);
 
-  const startLocalStream = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: true,
+  const createPeer = (userId) => {
+    const peer = new RTCPeerConnection(ICE_SERVERS);
+
+    peer.onicecandidate = e => {
+      if (e.candidate) {
+        socketRef.current.emit('signal', {
+          to: userId,
+          signal: e.candidate
+        });
+      }
+    };
+
+    peer.ontrack = e => {
+      const video = document.createElement('video');
+      video.srcObject = e.streams[0];
+      video.autoplay = true;
+      video.playsInline = true;
+      video.id = userId;
+      video.style.width = '45%';
+      remoteVideosRef.current[userId] = video;
+      document.getElementById('remote-container').appendChild(video);
+    };
+
+    peer.createOffer().then(offer => {
+      peer.setLocalDescription(offer);
+      socketRef.current.emit('signal', {
+        to: userId,
+        signal: offer
       });
-      localStreamRef.current = stream;
-      localVideoRef.current.srcObject = stream;
-    } catch (err) {
-      console.error('Error accessing media devices.', err);
-    }
-  };
-
-  const createOffer = async (toUserId) => {
-    peerRef.current = new RTCPeerConnection(ICE_SERVERS);
-
-    localStreamRef.current.getTracks().forEach((track) => {
-      peerRef.current.addTrack(track, localStreamRef.current);
     });
 
-    peerRef.current.onicecandidate = (e) => {
+    return peer;
+  };
+
+  const addPeer = (userId) => {
+    const peer = new RTCPeerConnection(ICE_SERVERS);
+
+    peer.onicecandidate = e => {
       if (e.candidate) {
-        socketRef.current.emit('send-signal', {
-          to: toUserId,
-          from: socketRef.current.id,
-          signal: { candidate: e.candidate },
+        socketRef.current.emit('signal', {
+          to: userId,
+          signal: e.candidate
         });
       }
     };
 
-    peerRef.current.ontrack = (e) => {
-      remoteVideoRef.current.srcObject = e.streams[0];
+    peer.ontrack = e => {
+      const video = document.createElement('video');
+      video.srcObject = e.streams[0];
+      video.autoplay = true;
+      video.playsInline = true;
+      video.id = userId;
+      video.style.width = '45%';
+      remoteVideosRef.current[userId] = video;
+      document.getElementById('remote-container').appendChild(video);
     };
 
-    const offer = await peerRef.current.createOffer();
-    await peerRef.current.setLocalDescription(offer);
-
-    socketRef.current.emit('send-signal', {
-      to: toUserId,
-      from: socketRef.current.id,
-      signal: offer,
-    });
+    return peer;
   };
 
-  const handleOffer = async (offer, fromUserId) => {
-    peerRef.current = new RTCPeerConnection(ICE_SERVERS);
+  const toggleAudio = () => {
+    const audioTrack = localStreamRef.current.getAudioTracks()[0];
+    audioTrack.enabled = !audioTrack.enabled;
+    setIsMuted(!audioTrack.enabled);
+  };
 
-    localStreamRef.current.getTracks().forEach((track) => {
-      peerRef.current.addTrack(track, localStreamRef.current);
-    });
-
-    peerRef.current.onicecandidate = (e) => {
-      if (e.candidate) {
-        socketRef.current.emit('send-signal', {
-          to: fromUserId,
-          from: socketRef.current.id,
-          signal: { candidate: e.candidate },
-        });
-      }
-    };
-
-    peerRef.current.ontrack = (e) => {
-      remoteVideoRef.current.srcObject = e.streams[0];
-    };
-
-    await peerRef.current.setRemoteDescription(new RTCSessionDescription(offer));
-    const answer = await peerRef.current.createAnswer();
-    await peerRef.current.setLocalDescription(answer);
-
-    socketRef.current.emit('send-signal', {
-      to: fromUserId,
-      from: socketRef.current.id,
-      signal: answer,
-    });
+  const toggleVideo = () => {
+    const videoTrack = localStreamRef.current.getVideoTracks()[0];
+    videoTrack.enabled = !videoTrack.enabled;
+    setIsVideoOff(!videoTrack.enabled);
   };
 
   return (
     <div style={{ textAlign: 'center' }}>
-      <h2>React WebRTC Video Call</h2>
-      <div>
-        <video ref={localVideoRef} autoPlay playsInline muted style={{ width: '45%' }} />
-        <video ref={remoteVideoRef} autoPlay playsInline style={{ width: '45%' }} />
+      <h2>Team Video Call App</h2>
+      <video ref={localVideoRef} autoPlay playsInline muted style={{ width: '45%' }} />
+      <div id="remote-container" style={{ marginTop: 20 }} />
+      <div style={{ marginTop: 20 }}>
+        <button onClick={toggleAudio}>{isMuted ? 'Unmute' : 'Mute'}</button>
+        <button onClick={toggleVideo}>{isVideoOff ? 'Turn Video On' : 'Turn Video Off'}</button>
       </div>
     </div>
   );
-}
+};
 
 export default App;
