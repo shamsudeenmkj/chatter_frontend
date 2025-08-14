@@ -5,15 +5,24 @@ const SIGNALING_SERVER = 'https://chatter-backend-4i7g.onrender.com';
 // const SIGNALING_SERVER = 'http://localhost:8000/';
 
 const ICE_SERVERS = {
-  iceServers: [{ urls: 'stun:stun.l.google.com:19302' },
-      {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    {
       urls: "turn:relay.metered.ca:80",
       username: "openrelayproject",
       credential: "openrelayproject"
+    },
+    {
+      urls: "turn:relay.metered.ca:443",
+      username: "openrelayproject",
+      credential: "openrelayproject"
+    },
+    {
+      urls: "turn:relay.metered.ca:443?transport=tcp",
+      username: "openrelayproject",
+      credential: "openrelayproject"
     }
-
-
-  ],
+  ]
 };
 
 const App = () => {
