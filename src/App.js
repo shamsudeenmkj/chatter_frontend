@@ -5,7 +5,15 @@ const SIGNALING_SERVER = 'https://chatter-backend-4i7g.onrender.com';
 // const SIGNALING_SERVER = 'http://localhost:8000/';
 
 const ICE_SERVERS = {
-  iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+  iceServers: [{ urls: 'stun:stun.l.google.com:19302' },
+      {
+      urls: "turn:relay.metered.ca:80",
+      username: "openrelayproject",
+      credential: "openrelayproject"
+    }
+
+
+  ],
 };
 
 const App = () => {
@@ -41,6 +49,7 @@ const App = () => {
 
         stream.getTracks().forEach((track) => {
           peer.addTrack(track, stream);
+          
         });
       });
 
@@ -49,7 +58,7 @@ const App = () => {
         if (!peer) {
           peer = createPeer(from, false);
           peersRef.current[from] = peer;
-
+          
           stream.getTracks().forEach((track) => {
             peer.addTrack(track, stream);
           });
