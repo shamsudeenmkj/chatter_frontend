@@ -1,8 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import io from 'socket.io-client';
-import { useSocket } from "./socket";
+import { useSocket } from './socket';
 import { useParams } from 'react-router-dom';
-
 
 // const SIGNALING_SERVER = 'https://chatter-backend-4i7g.onrender.com';
 // const SIGNALING_SERVER = 'http://localhost:8000/';
@@ -29,17 +28,9 @@ const ICE_SERVERS = {
 };
 
 const VideoCall = () => {
-  // const {name,roomId} = user;
-  const { roomId } = useParams();   // ✅ grab roomId from URL
-    const [name,setName] = useState('');
-      const [askName, setAskName] = useState(false);
-
-
-  const [user,setUser] = useState({name:"",roomId:""})
+  const {roomId} = useParams();
   const localVideoRef = useRef();
-  // const socketRef = useRef();
-    const socketRef = useSocket();   // ✅ use same socket everywhere
-
+  const socketRef = useSocket();
   const localStreamRef = useRef();
   const peersRef = useRef({});
     const [isMuted, setIsMuted] = useState(false);
@@ -47,24 +38,7 @@ const VideoCall = () => {
 
   useEffect(() => {
     // socketRef.current = io(SIGNALING_SERVER);
-     const storedUser = localStorage.getItem("user");
-     const paresedData=JSON.parse(storedUser)
-    if (storedUser) {
-       if (paresedData.name) {
-      setUser(paresedData);
-      setName(paresedData.name)
-      joinRoom(paresedData.name);
-    }else {
-        setAskName(true);        // ask if no name stored
-      }
-    } else {
-      setAskName(true);          // ask if no user stored
-    }
 
-  }, []);
-
-  function joinRoom (userName){
-    
     navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then((stream) => {
       localStreamRef.current = stream;
 
@@ -78,40 +52,16 @@ const VideoCall = () => {
         mainVideo.srcObject = stream;
       }
 
-socketRef.current.emit('join-room', {roomId: roomId,name: userName}, (response) => {
-  if (response.success) {
-    console.log("Joined room successfully");
-  } else {
-    alert(response.error);
-  }
-});
+      socketRef.current.emit('join-room', roomId);
 
+      socketRef.current.on('user-joined', (userId) => {
+        const peer = createPeer(userId, true);
+        peersRef.current[userId] = peer;
 
-
-
-      socketRef.current.on('user-joined', ({userId,name}) => {
-
-          console.log(`${name} joined with id ${userId}`);
-
-  // Only create a peer if it doesn’t exist
-  if (!peersRef.current[userId]) {
-    const peer = createPeer(userId, false); // false -> remote user is not initiator
-    peersRef.current[userId] = peer;
-
-    // Add local tracks to this peer
-    localStreamRef.current.getTracks().forEach(track => {
-      peer.addTrack(track, localStreamRef.current);
-    });
-  }
-        //   console.log(`${name} joined with id ${userId}`);
-
-        // const peer = createPeer(userId, true);
-        // peersRef.current[userId] = peer;
-
-        // stream.getTracks().forEach((track) => {
-        //   peer.addTrack(track, stream);
+        stream.getTracks().forEach((track) => {
+          peer.addTrack(track, stream);
           
-        // });
+        });
       });
 
       socketRef.current.on('signal', async ({ from, signal }) => {
@@ -164,139 +114,78 @@ socketRef.current.on('video-toggle', ({ userId, videoOff }) => {
     return () => {
       socketRef.current.disconnect();
     };
-  }
+  }, []);
 //commit
-//   const createPeer = (userId, initiator) => {
-//     const peer = new RTCPeerConnection(ICE_SERVERS);
+  const createPeer = (userId, initiator) => {
+    const peer = new RTCPeerConnection(ICE_SERVERS);
 
-//     peer.onicecandidate = (e) => {
-//       if (e.candidate) {
-//         socketRef.current.emit('signal', {
-//           to: userId,
-//           signal: e.candidate,
-//         });
-//       }
-//     };
-
-//     peer.ontrack = (e) => {
-//       let remoteVideo = document.getElementById(userId);
-//       if (!remoteVideo) {
-//          remoteVideo = document.createElement('video');
-//         remoteVideo.id = userId;
-//         remoteVideo.autoplay = true;
-//         remoteVideo.playsInline = true;
-//         remoteVideo.muted = false;
-//         remoteVideo.style.width = '100%';
-//         remoteVideo.style.borderRadius = '15px';
-//         remoteVideo.style.boxShadow = '0 2px 8px rgba(0,0,0,0.4)';
-//         remoteVideo.style.border = '2px solid #444';
-//         remoteVideo.style.marginBottom = '10px';
-//         document.getElementById('remote-container').appendChild(remoteVideo);
-
-//         remoteVideo.onclick = () => {
-//           const mainVideo = document.getElementById('main-video');
-//           if (mainVideo) {
-//             mainVideo.srcObject = remoteVideo.srcObject;
-//           }
-//         };
-
-//         const container = document.createElement('div');
-// container.style.position = 'relative';
-// container.style.width = '100%';
-
-// const label = document.createElement('div');
-// label.id = `audio-label-${userId}`;
-// label.style.position = 'absolute';
-// label.style.bottom = '10px';
-// label.style.left = '10px';
-// label.style.backgroundColor = 'rgba(0,0,0,0.6)';
-// label.style.color = 'white';
-// label.style.padding = '4px 8px';
-// label.style.borderRadius = '5px';
-// label.style.fontSize = '12px';
-// label.innerText = '🎤 Unmuted';
-
-// container.appendChild(remoteVideo);
-// container.appendChild(label);
-// document.getElementById('remote-container').appendChild(container);
-//       }
-//       remoteVideo.srcObject = e.streams[0];
-//     };
-
-//     if (initiator) {
-//       peer.onnegotiationneeded = async () => {
-//         const offer = await peer.createOffer();
-//         await peer.setLocalDescription(offer);
-//         socketRef.current.emit('signal', {
-//           to: userId,
-//           signal: peer.localDescription,
-//         });
-//       };
-//     }
-
-//     return peer;
-//   };
-
-
-
-const createPeer = (userId, initiator) => {
-  const peer = new RTCPeerConnection(ICE_SERVERS);
-
-  peer.onicecandidate = (e) => {
-    if (e.candidate) {
-      socketRef.current.emit('signal', { to: userId, signal: e.candidate });
-    }
-  };
-
-  peer.ontrack = (e) => {
-    // Only create container once
-    let container = document.getElementById(`container-${userId}`);
-    if (!container) {
-      container = document.createElement('div');
-      container.id = `container-${userId}`;
-      container.style.position = 'relative';
-      container.style.width = '100%';
-
-      const remoteVideo = document.createElement('video');
-      remoteVideo.id = `video-${userId}`;
-      remoteVideo.autoplay = true;
-      remoteVideo.playsInline = true;
-      remoteVideo.style.width = '100%';
-      remoteVideo.style.borderRadius = '15px';
-      remoteVideo.style.border = '2px solid #444';
-
-      const label = document.createElement('div');
-      label.id = `audio-label-${userId}`;
-      label.innerText = '🎤 Unmuted';
-      label.style.position = 'absolute';
-      label.style.bottom = '10px';
-      label.style.left = '10px';
-      label.style.backgroundColor = 'rgba(0,0,0,0.6)';
-      label.style.color = 'white';
-      label.style.padding = '4px 8px';
-      label.style.borderRadius = '5px';
-      label.style.fontSize = '12px';
-
-      container.appendChild(remoteVideo);
-      container.appendChild(label);
-      document.getElementById('remote-container').appendChild(container);
-    }
-
-    // Attach stream to video
-    const remoteVideo = document.getElementById(`video-${userId}`);
-    remoteVideo.srcObject = e.streams[0];
-  };
-
-  if (initiator) {
-    peer.onnegotiationneeded = async () => {
-      const offer = await peer.createOffer();
-      await peer.setLocalDescription(offer);
-      socketRef.current.emit('signal', { to: userId, signal: peer.localDescription });
+    peer.onicecandidate = (e) => {
+      if (e.candidate) {
+        socketRef.current.emit('signal', {
+          to: userId,
+          signal: e.candidate,
+        });
+      }
     };
-  }
 
-  return peer;
-};
+    peer.ontrack = (e) => {
+      let remoteVideo = document.getElementById(userId);
+      if (!remoteVideo) {
+         remoteVideo = document.createElement('video');
+        remoteVideo.id = userId;
+        remoteVideo.autoplay = true;
+        remoteVideo.playsInline = true;
+        remoteVideo.muted = false;
+        remoteVideo.style.width = '100%';
+        remoteVideo.style.borderRadius = '15px';
+        remoteVideo.style.boxShadow = '0 2px 8px rgba(0,0,0,0.4)';
+        remoteVideo.style.border = '2px solid #444';
+        remoteVideo.style.marginBottom = '10px';
+        document.getElementById('remote-container').appendChild(remoteVideo);
+
+        remoteVideo.onclick = () => {
+          const mainVideo = document.getElementById('main-video');
+          if (mainVideo) {
+            mainVideo.srcObject = remoteVideo.srcObject;
+          }
+        };
+
+        const container = document.createElement('div');
+container.style.position = 'relative';
+container.style.width = '100%';
+
+const label = document.createElement('div');
+label.id = `audio-label-${userId}`;
+label.style.position = 'absolute';
+label.style.bottom = '10px';
+label.style.left = '10px';
+label.style.backgroundColor = 'rgba(0,0,0,0.6)';
+label.style.color = 'white';
+label.style.padding = '4px 8px';
+label.style.borderRadius = '5px';
+label.style.fontSize = '12px';
+label.innerText = '🎤 Unmuted';
+
+container.appendChild(remoteVideo);
+container.appendChild(label);
+document.getElementById('remote-container').appendChild(container);
+      }
+      remoteVideo.srcObject = e.streams[0];
+    };
+
+    if (initiator) {
+      peer.onnegotiationneeded = async () => {
+        const offer = await peer.createOffer();
+        await peer.setLocalDescription(offer);
+        socketRef.current.emit('signal', {
+          to: userId,
+          signal: peer.localDescription,
+        });
+      };
+    }
+
+    return peer;
+  };
 
 
     const toggleAudio = () => {
@@ -322,30 +211,6 @@ const createPeer = (userId, initiator) => {
 
     }
   };
-
-  if (askName) {
-  return (
-      <div style={{
-        display: "flex", flexDirection: "column",
-        justifyContent: "center", alignItems: "center",
-        height: "100vh", background: "#1e1e1e", color: "white"
-      }}>
-        <h2>Enter your name to join room {roomId}</h2>
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          style={{ padding: "10px", borderRadius: "8px", marginBottom: "10px" }}
-        />
-        <button
-          onClick={() => { if (name.trim()) { setAskName(false); joinRoom(name); } }}
-          style={{ padding: "10px 20px", borderRadius: "8px", cursor: "pointer" }}
-        >
-          Join Room
-        </button>
-      </div>
-    );
-  }
 
   return (
   <div
