@@ -90,15 +90,28 @@ socketRef.current.emit('join-room', {roomId: roomId,name: userName}, (response) 
 
 
       socketRef.current.on('user-joined', ({userId,name}) => {
+
           console.log(`${name} joined with id ${userId}`);
 
-        const peer = createPeer(userId, true);
-        peersRef.current[userId] = peer;
+  // Only create a peer if it doesn’t exist
+  if (!peersRef.current[userId]) {
+    const peer = createPeer(userId, false); // false -> remote user is not initiator
+    peersRef.current[userId] = peer;
 
-        stream.getTracks().forEach((track) => {
-          peer.addTrack(track, stream);
+    // Add local tracks to this peer
+    localStreamRef.current.getTracks().forEach(track => {
+      peer.addTrack(track, localStreamRef.current);
+    });
+  }
+        //   console.log(`${name} joined with id ${userId}`);
+
+        // const peer = createPeer(userId, true);
+        // peersRef.current[userId] = peer;
+
+        // stream.getTracks().forEach((track) => {
+        //   peer.addTrack(track, stream);
           
-        });
+        // });
       });
 
       socketRef.current.on('signal', async ({ from, signal }) => {
@@ -153,76 +166,137 @@ socketRef.current.on('video-toggle', ({ userId, videoOff }) => {
     };
   }
 //commit
-  const createPeer = (userId, initiator) => {
-    const peer = new RTCPeerConnection(ICE_SERVERS);
+//   const createPeer = (userId, initiator) => {
+//     const peer = new RTCPeerConnection(ICE_SERVERS);
 
-    peer.onicecandidate = (e) => {
-      if (e.candidate) {
-        socketRef.current.emit('signal', {
-          to: userId,
-          signal: e.candidate,
-        });
-      }
-    };
+//     peer.onicecandidate = (e) => {
+//       if (e.candidate) {
+//         socketRef.current.emit('signal', {
+//           to: userId,
+//           signal: e.candidate,
+//         });
+//       }
+//     };
 
-    peer.ontrack = (e) => {
-      let remoteVideo = document.getElementById(userId);
-      if (!remoteVideo) {
-         remoteVideo = document.createElement('video');
-        remoteVideo.id = userId;
-        remoteVideo.autoplay = true;
-        remoteVideo.playsInline = true;
-        remoteVideo.muted = false;
-        remoteVideo.style.width = '100%';
-        remoteVideo.style.borderRadius = '15px';
-        remoteVideo.style.boxShadow = '0 2px 8px rgba(0,0,0,0.4)';
-        remoteVideo.style.border = '2px solid #444';
-        remoteVideo.style.marginBottom = '10px';
-        document.getElementById('remote-container').appendChild(remoteVideo);
+//     peer.ontrack = (e) => {
+//       let remoteVideo = document.getElementById(userId);
+//       if (!remoteVideo) {
+//          remoteVideo = document.createElement('video');
+//         remoteVideo.id = userId;
+//         remoteVideo.autoplay = true;
+//         remoteVideo.playsInline = true;
+//         remoteVideo.muted = false;
+//         remoteVideo.style.width = '100%';
+//         remoteVideo.style.borderRadius = '15px';
+//         remoteVideo.style.boxShadow = '0 2px 8px rgba(0,0,0,0.4)';
+//         remoteVideo.style.border = '2px solid #444';
+//         remoteVideo.style.marginBottom = '10px';
+//         document.getElementById('remote-container').appendChild(remoteVideo);
 
-        remoteVideo.onclick = () => {
-          const mainVideo = document.getElementById('main-video');
-          if (mainVideo) {
-            mainVideo.srcObject = remoteVideo.srcObject;
-          }
-        };
+//         remoteVideo.onclick = () => {
+//           const mainVideo = document.getElementById('main-video');
+//           if (mainVideo) {
+//             mainVideo.srcObject = remoteVideo.srcObject;
+//           }
+//         };
 
-        const container = document.createElement('div');
-container.style.position = 'relative';
-container.style.width = '100%';
+//         const container = document.createElement('div');
+// container.style.position = 'relative';
+// container.style.width = '100%';
 
-const label = document.createElement('div');
-label.id = `audio-label-${userId}`;
-label.style.position = 'absolute';
-label.style.bottom = '10px';
-label.style.left = '10px';
-label.style.backgroundColor = 'rgba(0,0,0,0.6)';
-label.style.color = 'white';
-label.style.padding = '4px 8px';
-label.style.borderRadius = '5px';
-label.style.fontSize = '12px';
-label.innerText = '🎤 Unmuted';
+// const label = document.createElement('div');
+// label.id = `audio-label-${userId}`;
+// label.style.position = 'absolute';
+// label.style.bottom = '10px';
+// label.style.left = '10px';
+// label.style.backgroundColor = 'rgba(0,0,0,0.6)';
+// label.style.color = 'white';
+// label.style.padding = '4px 8px';
+// label.style.borderRadius = '5px';
+// label.style.fontSize = '12px';
+// label.innerText = '🎤 Unmuted';
 
-container.appendChild(remoteVideo);
-container.appendChild(label);
-document.getElementById('remote-container').appendChild(container);
-      }
-      remoteVideo.srcObject = e.streams[0];
-    };
+// container.appendChild(remoteVideo);
+// container.appendChild(label);
+// document.getElementById('remote-container').appendChild(container);
+//       }
+//       remoteVideo.srcObject = e.streams[0];
+//     };
 
-    if (initiator) {
-      peer.onnegotiationneeded = async () => {
-        const offer = await peer.createOffer();
-        await peer.setLocalDescription(offer);
-        socketRef.current.emit('signal', {
-          to: userId,
-          signal: peer.localDescription,
-        });
-      };
+//     if (initiator) {
+//       peer.onnegotiationneeded = async () => {
+//         const offer = await peer.createOffer();
+//         await peer.setLocalDescription(offer);
+//         socketRef.current.emit('signal', {
+//           to: userId,
+//           signal: peer.localDescription,
+//         });
+//       };
+//     }
+
+//     return peer;
+//   };
+
+
+
+const createPeer = (userId, initiator) => {
+  const peer = new RTCPeerConnection(ICE_SERVERS);
+
+  peer.onicecandidate = (e) => {
+    if (e.candidate) {
+      socketRef.current.emit('signal', { to: userId, signal: e.candidate });
+    }
+  };
+
+  peer.ontrack = (e) => {
+    // Only create container once
+    let container = document.getElementById(`container-${userId}`);
+    if (!container) {
+      container = document.createElement('div');
+      container.id = `container-${userId}`;
+      container.style.position = 'relative';
+      container.style.width = '100%';
+
+      const remoteVideo = document.createElement('video');
+      remoteVideo.id = `video-${userId}`;
+      remoteVideo.autoplay = true;
+      remoteVideo.playsInline = true;
+      remoteVideo.style.width = '100%';
+      remoteVideo.style.borderRadius = '15px';
+      remoteVideo.style.border = '2px solid #444';
+
+      const label = document.createElement('div');
+      label.id = `audio-label-${userId}`;
+      label.innerText = '🎤 Unmuted';
+      label.style.position = 'absolute';
+      label.style.bottom = '10px';
+      label.style.left = '10px';
+      label.style.backgroundColor = 'rgba(0,0,0,0.6)';
+      label.style.color = 'white';
+      label.style.padding = '4px 8px';
+      label.style.borderRadius = '5px';
+      label.style.fontSize = '12px';
+
+      container.appendChild(remoteVideo);
+      container.appendChild(label);
+      document.getElementById('remote-container').appendChild(container);
     }
 
-    return peer;
+    // Attach stream to video
+    const remoteVideo = document.getElementById(`video-${userId}`);
+    remoteVideo.srcObject = e.streams[0];
   };
+
+  if (initiator) {
+    peer.onnegotiationneeded = async () => {
+      const offer = await peer.createOffer();
+      await peer.setLocalDescription(offer);
+      socketRef.current.emit('signal', { to: userId, signal: peer.localDescription });
+    };
+  }
+
+  return peer;
+};
 
 
     const toggleAudio = () => {
