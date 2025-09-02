@@ -38,7 +38,14 @@ const VideoCall = () => {
 
   useEffect(() => {
     // socketRef.current = io(SIGNALING_SERVER);
-
+  const storedUser = localStorage.getItem("user");
+     const name=JSON.parse(storedUser).name;
+    // if (storedUser) {
+    //    if (paresedData.name) {
+    //   // setUser(paresedData);
+    //   // setName(paresedData.name)
+    //   // joinRoom(paresedData.name);
+    // }}
     navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then((stream) => {
       localStreamRef.current = stream;
 
@@ -52,7 +59,7 @@ const VideoCall = () => {
         mainVideo.srcObject = stream;
       }
 
-      socketRef.current.emit('join-room', roomId);
+      socketRef.current.emit('join-room', roomId,name);
 
       socketRef.current.on('user-joined', (userId) => {
         const peer = createPeer(userId, true);

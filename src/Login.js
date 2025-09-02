@@ -1,23 +1,38 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useSocket } from './socket';
 
 const Login = ({ onJoin }) => {
   const [name, setName] = useState('');
   const [roomId, setRoomId] = useState('');
   const navigate = useNavigate();
+    const socketRef = useSocket();   // ✅ use same socket everywhere
 
 
   const handleJoin = () => {
     if (name && roomId) {
         const userData = { name, roomId };
-        
-  localStorage.setItem("user", JSON.stringify(userData));
+
+            socketRef.current.emit("login-room", { roomId }, (response) => {
+  if (response.success) {
+         localStorage.setItem("user", JSON.stringify(userData));
   navigate(`/room/${roomId}`)
+  console.log("success")
+  }else{
+          alert('Invalid Room Id');
+
+  }
+});
+        
+
     } else {
       alert('Please enter your name and meet code.');
     }
 
 };
+
+
+
 
 
  
