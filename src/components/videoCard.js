@@ -89,6 +89,7 @@ const toggleAudio = () => {
      <video
         ref={videoElementRef}
         autoPlay
+        muted
         playsInline
        alt="host Display" className='PrimeVideoDisplay'
       />: <div 

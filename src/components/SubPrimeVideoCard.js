@@ -38,7 +38,6 @@ const UserTile = ({ userId, name, stream, muted }) => {
           <video
             autoPlay
             playsInline
-            muted
             ref={videoRef}
             style={{ width: "220px", height: "150px" }}
           />
