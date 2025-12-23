@@ -40,6 +40,8 @@ const MeetingSection = () => {
       .then(stream => {
         setMainVideo(stream);
         setupAndJoin(stream, userName);
+            // setTimeout(() => addLocalTracksToPeers(stream), 500);
+
       })
       .catch(err => {
         // join with null (no tracks)
@@ -167,19 +169,41 @@ const setupAndJoin = (stream, userName) => {
   socket.emit('join-room', { roomId, name: userName, hasVideo, hasAudio });
 
   // 1️⃣ Receive all existing users (including null streams)
+  // socket.on('all-users', (users) => {
+  //  setRemoteUsers(
+  //   users
+  //     .filter(u => u.userId !== socket.id) // <-- ignore yourself
+  //     .map(u => ({
+  //       userId: u.userId,
+  //       name: u.name,
+  //       stream: null,
+  //       hasVideo: u.hasVideo,
+  //       hasAudio: u.hasAudio
+  //     }))
+  // );
+  // });
+
   socket.on('all-users', (users) => {
-   setRemoteUsers(
-    users
-      .filter(u => u.userId !== socket.id) // <-- ignore yourself
-      .map(u => ({
-        userId: u.userId,
-        name: u.name,
-        stream: null,
-        hasVideo: u.hasVideo,
-        hasAudio: u.hasAudio
-      }))
-  );
-  });
+  users
+    .filter(u => u.userId !== socket.id)
+    .forEach(u => {
+      // Add user in UI first
+      setRemoteUsers(prev => {
+        if (prev.some(x => x.userId === u.userId)) return prev;
+        return [...prev, { ...u, stream: null }];
+      });
+
+      // Create peer as NON-initiator
+      const peer = createPeer(u.userId, false);
+      peersRef.current[u.userId] = peer;
+
+      // Add our local tracks to send media
+      if (stream) {
+        stream.getTracks().forEach(track => peer.addTrack(track, stream));
+      }
+    });
+});
+
 
   // 2️⃣ When a new user joins
   socket.on('user-joined', (u) => {
@@ -213,6 +237,9 @@ const setupAndJoin = (stream, userName) => {
       await peer.addIceCandidate(new RTCIceCandidate(signal));
     }
   });
+
+
+
 
   // 4️⃣ User leaves
   socket.on('user-left', (id) => {
