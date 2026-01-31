@@ -81,39 +81,34 @@ const MeetingSection = () => {
     socket.emit("join-room", { roomId, name: userName, hasVideo, hasAudio });
 
     // EXISTING USERS
-    socket.on("all-users", users => {
-      users.forEach(u => {
-        if (u.userId === socket.id) return;
+  socket.on("all-users", users => {
+  users.forEach(u => {
+    if (u.userId === socket.id) return;
 
-        setRemoteUsers(prev => {
-          if (prev.some(x => x.userId === u.userId)) return prev;
-          return [...prev, { ...u, stream: null }];
-        });
+    // OLD user initiates offer
+    const peer = createPeer(u.userId, true);
+    peersRef.current[u.userId] = peer;
 
-        const peer = createPeer(u.userId, true);
-        peersRef.current[u.userId] = peer;
-      });
+    setRemoteUsers(prev => {
+      if (prev.some(x => x.userId === u.userId)) return prev;
+      return [...prev, { ...u, stream: null }];
     });
+  });
+});
+
 
     // NEW USER JOIN
-    socket.on("user-joined", u => {
-      setRemoteUsers(prev => {
-        if (prev.some(x => x.userId === u.userId)) return prev;
-        return [...prev, { ...u, stream: null }];
-      });
+  socket.on("user-joined", u => {
+  // NEW user does NOT initiate offer
+  const peer = createPeer(u.userId, false);
+  peersRef.current[u.userId] = peer;
 
-      let peer = peersRef.current[u.userId];
+  setRemoteUsers(prev => {
+    if (prev.some(x => x.userId === u.userId)) return prev;
+    return [...prev, { ...u, stream: null }];
+  });
+});
 
-      if (!peer) {
-        peer = createPeer(u.userId, true);
-        peersRef.current[u.userId] = peer;
-      }
-
-      // 🔥 FORCE renegotiation so OLD users get NEW user's stream
-      if (peer.signalingState === "stable") {
-        peer.onnegotiationneeded?.();
-      }
-    });
 
     // SIGNAL HANDLER
 socket.on("signal", async ({ from, signal }) => {
@@ -129,8 +124,6 @@ socket.on("signal", async ({ from, signal }) => {
       await peer.setRemoteDescription(signal);
 
       if (signal.type === "offer") {
-        console.log("📨 Offer received → sending answer");
-
         const answer = await peer.createAnswer();
         await peer.setLocalDescription(answer);
 
@@ -149,6 +142,7 @@ socket.on("signal", async ({ from, signal }) => {
     console.warn("Signal error:", err);
   }
 });
+
 
 
 
@@ -176,38 +170,29 @@ const createPeer = (userId, initiator) => {
   console.log("Creating peer for:", userId);
 
   const peer = new RTCPeerConnection(ICE_SERVERS);
-
-  // Track negotiation lock
   peer.isMakingOffer = false;
 
-  // ALWAYS SAME ORDER
+  // SAME ORDER ALWAYS
   peer.addTransceiver("audio", { direction: "sendrecv" });
   peer.addTransceiver("video", { direction: "sendrecv" });
 
   // Add tracks ONCE
   if (localStreamRef.current) {
     localStreamRef.current.getTracks().forEach(track => {
-      console.log("Added local track:", track.kind);
       peer.addTrack(track, localStreamRef.current);
     });
   }
 
-  // ICE candidates
   peer.onicecandidate = e => {
     if (e.candidate) {
       socketRef.current.emit("signal", { to: userId, signal: e.candidate });
     }
   };
 
-  // STREAM RECEIVE
-  peer.ontrack = (event) => {
+  peer.ontrack = event => {
     console.log("🎥 onTrack fired:", userId, event.track.kind);
 
-    let stream = event.streams?.[0];
-    if (!stream) {
-      stream = new MediaStream();
-      stream.addTrack(event.track);
-    }
+    let stream = event.streams?.[0] || new MediaStream([event.track]);
 
     setRemoteUsers(prev => {
       const exists = prev.find(u => u.userId === userId);
@@ -220,20 +205,14 @@ const createPeer = (userId, initiator) => {
     });
   };
 
-  // DEBUG
-  peer.oniceconnectionstatechange = () => console.log("ICE:", peer.iceConnectionState);
-  peer.onconnectionstatechange = () => console.log("CONNECTION:", peer.connectionState);
-  peer.onsignalingstatechange = () => console.log("SIGNALING:", peer.signalingState);
-
-  // OFFER — SAFE MODE
+  // OFFER ONLY IF INITIATOR
   if (initiator) {
     peer.onnegotiationneeded = async () => {
+      if (peer.isMakingOffer || peer.signalingState !== "stable") return;
+
+      peer.isMakingOffer = true;
+
       try {
-        if (peer.isMakingOffer) return;
-        if (peer.signalingState !== "stable") return;
-
-        peer.isMakingOffer = true;
-
         console.log("📡 Creating offer for", userId);
 
         const offer = await peer.createOffer();
@@ -244,8 +223,6 @@ const createPeer = (userId, initiator) => {
           signal: peer.localDescription
         });
 
-      } catch (err) {
-        console.warn("Negotiation error:", err);
       } finally {
         peer.isMakingOffer = false;
       }
@@ -254,6 +231,7 @@ const createPeer = (userId, initiator) => {
 
   return peer;
 };
+
 
 
 
