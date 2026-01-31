@@ -42,10 +42,10 @@ const MeetingSection = () => {
       .then(stream => {
         localStreamRef.current = stream;
         setMainVideo(stream);
-        setupAndJoin(stream, userName);
+        setupAndJoin(userName);
       })
       .catch(() => {
-        setupAndJoin(null, userName);
+        setupAndJoin(userName);
       });
 
     return cleanup;
@@ -53,15 +53,7 @@ const MeetingSection = () => {
 
   function cleanup() {
     const socket = socketRef.current;
-    if (socket) {
-      socket.off("all-users");
-      socket.off("user-joined");
-      socket.off("signal");
-      socket.off("user-left");
-      socket.off("audio-toggle");
-      socket.off("video-toggle");
-      socket.disconnect?.();
-    }
+    if (socket) socket.disconnect?.();
 
     Object.values(peersRef.current).forEach(peer => peer.close());
     peersRef.current = {};
@@ -71,16 +63,18 @@ const MeetingSection = () => {
     }
   }
 
-  function setupAndJoin(stream, userName) {
+  function setupAndJoin(userName) {
     const socket = socketRef.current;
     if (!socket) return;
 
-    const hasVideo = !!stream?.getVideoTracks().length;
-    const hasAudio = !!stream?.getAudioTracks().length;
+    socket.emit("join-room", {
+      roomId,
+      name: userName,
+      hasVideo: !!localStreamRef.current?.getVideoTracks().length,
+      hasAudio: !!localStreamRef.current?.getAudioTracks().length
+    });
 
-    socket.emit("join-room", { roomId, name: userName, hasVideo, hasAudio });
-
-    // Receive all existing users
+    // Existing users → YOU create peer as NON-initiator
     socket.on("all-users", users => {
       users.forEach(u => {
         if (u.userId === socket.id) return;
@@ -90,12 +84,12 @@ const MeetingSection = () => {
           return [...prev, { ...u, stream: null }];
         });
 
-        const peer = createPeer(u.userId, true);
+        const peer = createPeer(u.userId, false);
         peersRef.current[u.userId] = peer;
       });
     });
 
-    // New user joins
+    // New user joins → YOU are initiator
     socket.on("user-joined", u => {
       setRemoteUsers(prev => {
         if (prev.some(x => x.userId === u.userId)) return prev;
@@ -107,70 +101,37 @@ const MeetingSection = () => {
     });
 
     // WebRTC signals
-  const createPeer = (userId, initiator) => {
-  const peer = new RTCPeerConnection(ICE_SERVERS);
+    socket.on("signal", async ({ from, signal }) => {
+      let peer = peersRef.current[from];
 
-  // IMPORTANT: Keep transceiver order SAME for everyone
-  const audioTransceiver = peer.addTransceiver("audio", { direction: "sendrecv" });
-  const videoTransceiver = peer.addTransceiver("video", { direction: "sendrecv" });
-
-  // Add local tracks BEFORE offer
-  if (mainVideo) {
-    mainVideo.getTracks().forEach(track => {
-      peer.addTrack(track, mainVideo);
-    });
-  }
-
-  peer.onicecandidate = (e) => {
-    if (e.candidate) {
-      socketRef.current.emit("signal", { to: userId, signal: e.candidate });
-    }
-  };
-
-  peer.ontrack = (event) => {
-    const stream = event.streams?.[0] || new MediaStream([event.track]);
-
-    console.log("🎥 Remote stream received from", userId);
-
-    setRemoteUsers(prev => {
-      const exists = prev.find(u => u.userId === userId);
-      if (exists) {
-        return prev.map(u => u.userId === userId ? { ...u, stream } : u);
+      if (!peer) {
+        peer = createPeer(from, false);
+        peersRef.current[from] = peer;
       }
-      return [...prev, { userId, stream }];
-    });
-  };
 
-  // Only initiator creates offer
-  if (initiator) {
-    peer.onnegotiationneeded = async () => {
       try {
-        console.log("📡 Creating offer for", userId);
+        if (signal.type) {
+          await peer.setRemoteDescription(new RTCSessionDescription(signal));
 
-        const offer = await peer.createOffer();
-        await peer.setLocalDescription(offer);
+          if (signal.type === "offer") {
+            const answer = await peer.createAnswer();
+            await peer.setLocalDescription(answer);
+            socket.emit("signal", { to: from, signal: peer.localDescription });
+          }
+        }
 
-        socketRef.current.emit("signal", {
-          to: userId,
-          signal: peer.localDescription
-        });
+        if (signal.candidate) {
+          await peer.addIceCandidate(new RTCIceCandidate(signal));
+        }
 
       } catch (err) {
-        console.warn("Negotiation error:", err);
+        console.warn("Signal error:", err);
       }
-    };
-  }
-
-  return peer;
-};
-
-
+    });
 
     socket.on("user-left", id => {
-      if (peersRef.current[id]) {
-        peersRef.current[id].close();
-        delete peersRef.current[id];
-      }
+      if (peersRef.current[id]) peersRef.current[id].close();
+      delete peersRef.current[id];
       setRemoteUsers(prev => prev.filter(u => u.userId !== id));
     });
 
@@ -183,63 +144,54 @@ const MeetingSection = () => {
     });
   }
 
-const createPeer = (userId, initiator) => {
-  const peer = new RTCPeerConnection(ICE_SERVERS);
+  const createPeer = (userId, initiator) => {
+    const peer = new RTCPeerConnection(ICE_SERVERS);
 
-  // IMPORTANT: Keep transceiver order SAME for everyone
-  const audioTransceiver = peer.addTransceiver("audio", { direction: "sendrecv" });
-  const videoTransceiver = peer.addTransceiver("video", { direction: "sendrecv" });
+    // SAME order for everyone
+    peer.addTransceiver("audio", { direction: "sendrecv" });
+    peer.addTransceiver("video", { direction: "sendrecv" });
 
-  // Add local tracks BEFORE offer
-  if (mainVideo) {
-    mainVideo.getTracks().forEach(track => {
-      peer.addTrack(track, mainVideo);
-    });
-  }
-
-  peer.onicecandidate = (e) => {
-    if (e.candidate) {
-      socketRef.current.emit("signal", { to: userId, signal: e.candidate });
+    // Add tracks BEFORE offer
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => {
+        peer.addTrack(track, localStreamRef.current);
+      });
     }
-  };
 
-  peer.ontrack = (event) => {
-    const stream = event.streams?.[0] || new MediaStream([event.track]);
-
-    console.log("🎥 Remote stream received from", userId);
-
-    setRemoteUsers(prev => {
-      const exists = prev.find(u => u.userId === userId);
-      if (exists) {
-        return prev.map(u => u.userId === userId ? { ...u, stream } : u);
-      }
-      return [...prev, { userId, stream }];
-    });
-  };
-
-  // Only initiator creates offer
-  if (initiator) {
-    peer.onnegotiationneeded = async () => {
-      try {
-        console.log("📡 Creating offer for", userId);
-
-        const offer = await peer.createOffer();
-        await peer.setLocalDescription(offer);
-
-        socketRef.current.emit("signal", {
-          to: userId,
-          signal: peer.localDescription
-        });
-
-      } catch (err) {
-        console.warn("Negotiation error:", err);
+    peer.onicecandidate = e => {
+      if (e.candidate) {
+        socketRef.current.emit("signal", { to: userId, signal: e.candidate });
       }
     };
-  }
 
-  return peer;
-};
+    peer.ontrack = event => {
+      const stream = event.streams?.[0] || new MediaStream([event.track]);
 
+      console.log("🎥 Remote stream received from", userId);
+
+      setRemoteUsers(prev => {
+        const exists = prev.find(u => u.userId === userId);
+        if (exists) {
+          return prev.map(u => u.userId === userId ? { ...u, stream } : u);
+        }
+        return [...prev, { userId, stream }];
+      });
+    };
+
+    if (initiator) {
+      peer.onnegotiationneeded = async () => {
+        try {
+          const offer = await peer.createOffer();
+          await peer.setLocalDescription(offer);
+          socketRef.current.emit("signal", { to: userId, signal: peer.localDescription });
+        } catch (err) {
+          console.warn("Negotiation error:", err);
+        }
+      };
+    }
+
+    return peer;
+  };
 
   return (
     <section className="meetingSc">
@@ -247,17 +199,8 @@ const createPeer = (userId, initiator) => {
         <div className="row">
 
           <div className="col-xl-9">
-            <VideoCard
-              video={mainVideo}
-              name={name}
-              roomId={roomId}
-              socketRef={socketRef}
-            />
-
-            <SubPrimeVideoCard
-              userList={remoteUsers}
-              mutedList={mutedList}
-            />
+            <VideoCard video={mainVideo} name={name} roomId={roomId} socketRef={socketRef} />
+            <SubPrimeVideoCard userList={remoteUsers} mutedList={mutedList} />
           </div>
 
           <div className="col-xl-3">
