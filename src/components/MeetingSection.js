@@ -108,40 +108,39 @@ const MeetingSection = () => {
 
     // WebRTC signals
     socket.on("signal", async ({ from, signal }) => {
-      let peer = peersRef.current[from];
+  let peer = peersRef.current[from];
 
-      if (!peer) {
-        peer = createPeer(from, false);
-        peersRef.current[from] = peer;
+  if (!peer) {
+    peer = createPeer(from, false);
+    peersRef.current[from] = peer;
+  }
+
+  try {
+    if (signal.type) {
+      await peer.setRemoteDescription(new RTCSessionDescription(signal));
+
+      if (signal.type === "offer") {
+        console.log("📨 Offer received, sending answer");
+
+        const answer = await peer.createAnswer();
+        await peer.setLocalDescription(answer);
+
+        socket.emit("signal", {
+          to: from,
+          signal: peer.localDescription
+        });
       }
+    }
 
-      try {
-        if (signal.type) {
-          await peer.setRemoteDescription(new RTCSessionDescription(signal));
+    if (signal.candidate) {
+      await peer.addIceCandidate(new RTCIceCandidate(signal));
+    }
 
-          if (signal.type === "offer") {
-            const answer = await peer.createAnswer({
-              offerToReceiveVideo: true,
-              offerToReceiveAudio: true
-            });
+  } catch (err) {
+    console.warn("Signal error:", err);
+  }
+});
 
-            await peer.setLocalDescription(answer);
-
-            socket.emit("signal", {
-              to: from,
-              signal: peer.localDescription
-            });
-          }
-        }
-
-        if (signal.candidate) {
-          await peer.addIceCandidate(new RTCIceCandidate(signal));
-        }
-
-      } catch (err) {
-        console.warn("Signal error:", err);
-      }
-    });
 
     socket.on("user-left", id => {
       if (peersRef.current[id]) {
@@ -160,46 +159,47 @@ const MeetingSection = () => {
     });
   }
 
-  function createPeer(userId, initiator) {
-    const peer = new RTCPeerConnection(ICE_SERVERS);
+ const createPeer = (userId, initiator) => {
+  const peer = new RTCPeerConnection(ICE_SERVERS);
 
-    // Always receive media (even no cam/mic)
-    peer.addTransceiver("video", { direction: "recvonly" });
-    peer.addTransceiver("audio", { direction: "recvonly" });
+  // Always allow receiving
+  peer.addTransceiver("video", { direction: "sendrecv" });
+  peer.addTransceiver("audio", { direction: "sendrecv" });
 
-    // Add local tracks if available
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => {
-        peer.addTrack(track, localStreamRef.current);
-      });
+  // Add local tracks BEFORE negotiation
+  if (localStreamRef.current) {
+    localStreamRef.current.getTracks().forEach(track => {
+      peer.addTrack(track, localStreamRef.current);
+    });
+  }
+
+  peer.onicecandidate = e => {
+    if (e.candidate) {
+      socketRef.current.emit("signal", { to: userId, signal: e.candidate });
     }
+  };
 
-    peer.onicecandidate = e => {
-      if (e.candidate) {
-        socketRef.current.emit("signal", { to: userId, signal: e.candidate });
+  peer.ontrack = event => {
+    const stream = event.streams?.[0] || new MediaStream([event.track]);
+
+    console.log("🎥 Remote stream received from", userId);
+
+    setRemoteUsers(prev => {
+      const exists = prev.find(u => u.userId === userId);
+      if (exists) {
+        return prev.map(u => u.userId === userId ? { ...u, stream } : u);
       }
-    };
+      return [...prev, { userId, stream }];
+    });
+  };
 
-    peer.ontrack = event => {
-      const stream = event.streams?.[0] || new MediaStream([event.track]);
-
-      setRemoteUsers(prev => {
-        const exists = prev.find(u => u.userId === userId);
-        if (exists) {
-          return prev.map(u => u.userId === userId ? { ...u, stream } : u);
-        }
-        return [...prev, { userId, stream }];
-      });
-    };
-
-    // Always renegotiate to force stream delivery
+  // Offer ONLY if initiator
+  if (initiator) {
     peer.onnegotiationneeded = async () => {
       try {
-        const offer = await peer.createOffer({
-          offerToReceiveVideo: true,
-          offerToReceiveAudio: true
-        });
+        console.log("📡 Creating offer for", userId);
 
+        const offer = await peer.createOffer();
         await peer.setLocalDescription(offer);
 
         socketRef.current.emit("signal", {
@@ -211,9 +211,11 @@ const MeetingSection = () => {
         console.warn("Negotiation error:", err);
       }
     };
-
-    return peer;
   }
+
+  return peer;
+};
+
 
   return (
     <section className="meetingSc">
