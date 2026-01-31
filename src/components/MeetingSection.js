@@ -1,14 +1,14 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import VideoCard from './videoCard';
-import ChatCard from './ChatCard';
-import SubPrimeVideoCard from './SubPrimeVideoCard';
-import LinkSharingCard from './LinkSharingCard';
-import { useSocket } from '../sockets/socket';
+import React, { useEffect, useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import VideoCard from "./videoCard";
+import ChatCard from "./ChatCard";
+import SubPrimeVideoCard from "./SubPrimeVideoCard";
+import LinkSharingCard from "./LinkSharingCard";
+import { useSocket } from "../sockets/socket";
 
 const ICE_SERVERS = {
   iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: "stun:stun.l.google.com:19302" },
     { urls: "turn:relay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
     { urls: "turn:relay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
     { urls: "turn:relay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" }
@@ -19,22 +19,28 @@ const MeetingSection = () => {
   const { roomId } = useParams();
   const navigate = useNavigate();
   const socketRef = useSocket();
-  const peersRef = useRef({});
 
-  const [name, setName] = useState('');
-  const [mainVideo, setMainVideo] = useState(null);
+  const peersRef = useRef({});
+  const localStreamRef = useRef(null);
+
+  const [name, setName] = useState("");
   const [remoteUsers, setRemoteUsers] = useState([]);
+  const [mainVideo, setMainVideo] = useState(null);
   const [mutedList, setMutedList] = useState([]);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (!storedUser) return navigate(`/login/${roomId}`);
+    const storedUser = localStorage.getItem("user");
+    if (!storedUser) {
+      navigate(`/login/${roomId}`);
+      return;
+    }
 
     const userName = JSON.parse(storedUser).name;
     setName(userName);
 
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
       .then(stream => {
+        localStreamRef.current = stream;
         setMainVideo(stream);
         setupAndJoin(stream, userName);
       })
@@ -45,80 +51,132 @@ const MeetingSection = () => {
     return cleanup;
   }, []);
 
-  // ---------------- CLEANUP ----------------
-  const cleanup = () => {
+  function cleanup() {
     const socket = socketRef.current;
-
     if (socket) {
-      socket.off();
+      socket.off("all-users");
+      socket.off("user-joined");
+      socket.off("signal");
+      socket.off("user-left");
+      socket.off("audio-toggle");
+      socket.off("video-toggle");
       socket.disconnect?.();
     }
 
     Object.values(peersRef.current).forEach(peer => peer.close());
     peersRef.current = {};
 
-    if (mainVideo) {
-      mainVideo.getTracks().forEach(track => track.stop());
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(t => t.stop());
     }
-  };
+  }
 
-  // ---------------- SETUP ----------------
-  const setupAndJoin = (stream, userName) => {
+  function setupAndJoin(stream, userName) {
     const socket = socketRef.current;
     if (!socket) return;
-
-    socket.off();
 
     const hasVideo = !!stream?.getVideoTracks().length;
     const hasAudio = !!stream?.getAudioTracks().length;
 
-    socket.emit('join-room', { roomId, name: userName, hasVideo, hasAudio });
+    socket.emit("join-room", { roomId, name: userName, hasVideo, hasAudio });
 
-    // Existing users
-    socket.on('all-users', users => {
-      users.filter(u => u.userId !== socket.id).forEach(u => {
-        addRemoteUser(u);
-        const peer = createPeer(u.userId, false);
+    // Receive all existing users
+    socket.on("all-users", users => {
+      users.forEach(u => {
+        if (u.userId === socket.id) return;
+
+        setRemoteUsers(prev => {
+          if (prev.some(x => x.userId === u.userId)) return prev;
+          return [...prev, { ...u, stream: null }];
+        });
+
+        const peer = createPeer(u.userId, true);
         peersRef.current[u.userId] = peer;
-        addTracksToPeer(peer, stream);
       });
     });
 
-    // New user joined
-    socket.on('user-joined', user => {
-      addRemoteUser(user);
-      const peer = createPeer(user.userId, true);
-      peersRef.current[user.userId] = peer;
-      addTracksToPeer(peer, stream);
+    // New user joins
+    socket.on("user-joined", u => {
+      setRemoteUsers(prev => {
+        if (prev.some(x => x.userId === u.userId)) return prev;
+        return [...prev, { ...u, stream: null }];
+      });
+
+      const peer = createPeer(u.userId, true);
+      peersRef.current[u.userId] = peer;
     });
 
-    // Signal exchange
-    socket.on('signal', handleSignal);
+    // WebRTC signals
+    socket.on("signal", async ({ from, signal }) => {
+      let peer = peersRef.current[from];
 
-    // User left
-    socket.on('user-left', handleUserLeft);
+      if (!peer) {
+        peer = createPeer(from, false);
+        peersRef.current[from] = peer;
+      }
 
-    // Media toggles
-    socket.on('audio-toggle', ({ userId, muted }) => {
-      setMutedList(prev => muted ? [...new Set([...prev, userId])] : prev.filter(id => id !== userId));
+      try {
+        if (signal.type) {
+          await peer.setRemoteDescription(new RTCSessionDescription(signal));
+
+          if (signal.type === "offer") {
+            const answer = await peer.createAnswer({
+              offerToReceiveVideo: true,
+              offerToReceiveAudio: true
+            });
+
+            await peer.setLocalDescription(answer);
+
+            socket.emit("signal", {
+              to: from,
+              signal: peer.localDescription
+            });
+          }
+        }
+
+        if (signal.candidate) {
+          await peer.addIceCandidate(new RTCIceCandidate(signal));
+        }
+
+      } catch (err) {
+        console.warn("Signal error:", err);
+      }
     });
 
-    socket.on('video-toggle', ({ userId, videoOff }) => {
+    socket.on("user-left", id => {
+      if (peersRef.current[id]) {
+        peersRef.current[id].close();
+        delete peersRef.current[id];
+      }
+      setRemoteUsers(prev => prev.filter(u => u.userId !== id));
+    });
+
+    socket.on("audio-toggle", ({ userId, muted }) => {
+      setMutedList(prev => muted ? [...prev, userId] : prev.filter(id => id !== userId));
+    });
+
+    socket.on("video-toggle", ({ userId, videoOff }) => {
       setRemoteUsers(prev => prev.map(u => u.userId === userId ? { ...u, videoOff } : u));
     });
-  };
+  }
 
-  // ---------------- PEER CREATION ----------------
-  const createPeer = (userId, initiator) => {
+  function createPeer(userId, initiator) {
     const peer = new RTCPeerConnection(ICE_SERVERS);
 
-    // ✅ Always receive even if no mic/cam
+    // Always receive media (even no cam/mic)
     peer.addTransceiver("video", { direction: "recvonly" });
     peer.addTransceiver("audio", { direction: "recvonly" });
 
+    // Add local tracks if available
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => {
+        peer.addTrack(track, localStreamRef.current);
+      });
+    }
+
     peer.onicecandidate = e => {
       if (e.candidate) {
-        socketRef.current.emit('signal', { to: userId, signal: e.candidate });
+        socketRef.current.emit("signal", { to: userId, signal: e.candidate });
       }
     };
 
@@ -134,104 +192,45 @@ const MeetingSection = () => {
       });
     };
 
-    // Force offer even if no tracks
-    if (initiator) {
-      peer.onnegotiationneeded = async () => {
-        try {
-          const offer = await peer.createOffer({
-            offerToReceiveAudio: true,
-            offerToReceiveVideo: true
-          });
+    // Always renegotiate to force stream delivery
+    peer.onnegotiationneeded = async () => {
+      try {
+        const offer = await peer.createOffer({
+          offerToReceiveVideo: true,
+          offerToReceiveAudio: true
+        });
 
-          await peer.setLocalDescription(offer);
+        await peer.setLocalDescription(offer);
 
-          socketRef.current.emit('signal', {
-            to: userId,
-            signal: peer.localDescription
-          });
+        socketRef.current.emit("signal", {
+          to: userId,
+          signal: peer.localDescription
+        });
 
-        } catch (err) {
-          console.warn("Negotiation error:", err);
-        }
-      };
-    }
+      } catch (err) {
+        console.warn("Negotiation error:", err);
+      }
+    };
 
     return peer;
-  };
+  }
 
-  // ---------------- SIGNAL HANDLER ----------------
-  const handleSignal = async ({ from, signal }) => {
-    let peer = peersRef.current[from];
-
-    if (!peer) {
-      peer = createPeer(from, false);
-      peersRef.current[from] = peer;
-    }
-
-    try {
-      if (signal.type === "offer" || signal.type === "answer") {
-        await peer.setRemoteDescription(new RTCSessionDescription(signal));
-
-        if (signal.type === "offer") {
-          const answer = await peer.createAnswer({
-            offerToReceiveAudio: true,
-            offerToReceiveVideo: true
-          });
-
-          await peer.setLocalDescription(answer);
-
-          socketRef.current.emit('signal', {
-            to: from,
-            signal: peer.localDescription
-          });
-        }
-      }
-      else if (signal.candidate) {
-        await peer.addIceCandidate(new RTCIceCandidate(signal));
-      }
-    }
-    catch (err) {
-      console.warn("Signal error:", err);
-    }
-  };
-
-  // ---------------- HELPERS ----------------
-  const addTracksToPeer = (peer, stream) => {
-    if (!stream) return;
-    stream.getTracks().forEach(track => peer.addTrack(track, stream));
-  };
-
-  const addRemoteUser = (user) => {
-    setRemoteUsers(prev => {
-      if (prev.some(u => u.userId === user.userId)) return prev;
-      return [...prev, { ...user, stream: null }];
-    });
-  };
-
-  const handleUserLeft = (userId) => {
-    peersRef.current[userId]?.close();
-    delete peersRef.current[userId];
-
-    setRemoteUsers(prev => prev.filter(u => u.userId !== userId));
-  };
-
-  // ---------------- UI ----------------
   return (
-    <section className='meetingSc'>
+    <section className="meetingSc">
       <div className="container">
         <div className="row">
 
           <div className="col-xl-9">
-            <VideoCard 
-              video={mainVideo} 
-              name={name} 
-              roomId={roomId} 
-              socketRef={socketRef} 
+            <VideoCard
+              video={mainVideo}
+              name={name}
+              roomId={roomId}
+              socketRef={socketRef}
             />
 
-            <SubPrimeVideoCard 
-              userList={remoteUsers} 
-              mutedList={mutedList} 
+            <SubPrimeVideoCard
+              userList={remoteUsers}
+              mutedList={mutedList}
             />
           </div>
 
