@@ -94,16 +94,23 @@ const MeetingSection = () => {
     });
 
     // NEW USER → ANSWER ONLY
-    socket.on("user-joined", u => {
-      const peer = createPeer(u.userId, false);
-      peersRef.current[u.userId] = peer;
+socket.on("user-joined", u => {
+  const peer = createPeer(u.userId, false);
+  peersRef.current[u.userId] = peer;
 
-      setRemoteUsers(prev =>
-        prev.some(x => x.userId === u.userId)
-          ? prev
-          : [...prev, { ...u, stream: null }]
-      );
-    });
+  setRemoteUsers(prev =>
+    prev.some(x => x.userId === u.userId)
+      ? prev
+      : [...prev, { ...u, stream: null }]
+  );
+
+  // 🔥 IMPORTANT: Tell OLD USER to renegotiate
+  const oldPeer = peersRef.current[u.userId];
+  if (oldPeer && oldPeer.signalingState === "stable") {
+    oldPeer.dispatchEvent(new Event("negotiationneeded"));
+  }
+});
+
 
     // SIGNAL HANDLER
     socket.on("signal", async ({ from, signal }) => {
@@ -171,11 +178,16 @@ const MeetingSection = () => {
     peer.addTransceiver("video", { direction: "sendrecv" });
 
     // ADD TRACKS ONCE
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => {
-        peer.addTrack(track, localStreamRef.current);
-      });
+    // Always attach tracks
+if (localStreamRef.current) {
+  localStreamRef.current.getTracks().forEach(track => {
+    const exists = peer.getSenders().find(s => s.track === track);
+    if (!exists) {
+      peer.addTrack(track, localStreamRef.current);
     }
+  });
+}
+
 
     peer.onicecandidate = e => {
       if (e.candidate) {
