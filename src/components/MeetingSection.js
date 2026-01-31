@@ -116,36 +116,42 @@ const MeetingSection = () => {
     });
 
     // SIGNAL HANDLER
-    socket.on("signal", async ({ from, signal }) => {
-      let peer = peersRef.current[from];
+  socket.on("signal", async ({ from, signal }) => {
+  let peer = peersRef.current[from];
 
-      if (!peer) {
-        peer = createPeer(from, false);
-        peersRef.current[from] = peer;
+  if (!peer) {
+    peer = createPeer(from, false);
+    peersRef.current[from] = peer;
+  }
+
+  try {
+    // SDP
+    if (signal.type) {
+      await peer.setRemoteDescription(signal);
+
+      if (signal.type === "offer") {
+        console.log("📨 Offer received → sending answer");
+
+        const answer = await peer.createAnswer();
+        await peer.setLocalDescription(answer);
+
+        socket.emit("signal", {
+          to: from,
+          signal: peer.localDescription
+        });
       }
+    }
 
-      try {
-        if (signal.type) {
-          await peer.setRemoteDescription(new RTCSessionDescription(signal));
+    // ICE
+    if (signal.candidate) {
+      await peer.addIceCandidate(signal);
+    }
 
-          if (signal.type === "offer") {
-            console.log("📨 Offer received → sending answer");
+  } catch (err) {
+    console.warn("Signal error:", err);
+  }
+});
 
-            const answer = await peer.createAnswer();
-            await peer.setLocalDescription(answer);
-
-            socket.emit("signal", { to: from, signal: peer.localDescription });
-          }
-        }
-
-        if (signal.candidate) {
-          await peer.addIceCandidate(new RTCIceCandidate(signal));
-        }
-
-      } catch (err) {
-        console.warn("Signal error:", err);
-      }
-    });
 
     socket.on("user-left", id => {
       if (peersRef.current[id]) {
@@ -167,32 +173,36 @@ const MeetingSection = () => {
   // ===============================
   // CREATE PEER (FIXED)
   // ===============================
- const createPeer = (userId, initiator) => {
+const createPeer = (userId, initiator) => {
   console.log("Creating peer for:", userId);
 
   const peer = new RTCPeerConnection(ICE_SERVERS);
 
-  // Force SAME order everywhere
-  const audioTransceiver = peer.addTransceiver("audio", { direction: "sendrecv" });
-  const videoTransceiver = peer.addTransceiver("video", { direction: "sendrecv" });
+  // ✅ FIX: Always same transceiver order
+  peer.addTransceiver("audio", { direction: "sendrecv" });
+  peer.addTransceiver("video", { direction: "sendrecv" });
 
-  // Add tracks BEFORE creating offer
+  // ✅ Add local tracks ONCE before offer
   if (localStreamRef.current) {
     localStreamRef.current.getTracks().forEach(track => {
-      console.log("Adding local track:", track.kind);
       peer.addTrack(track, localStreamRef.current);
+      console.log("Added track:", track.kind);
     });
   }
 
-  peer.onicecandidate = e => {
+  // ICE
+  peer.onicecandidate = (e) => {
     if (e.candidate) {
-      socketRef.current.emit("signal", { to: userId, signal: e.candidate });
+      socketRef.current.emit("signal", {
+        to: userId,
+        signal: e.candidate
+      });
     }
   };
 
-  // 🔥 STREAM RECEIVE FIX
+  // ✅ STREAM RECEIVE (FIXED)
   peer.ontrack = (event) => {
-    console.log("🎥 onTrack fired from:", userId, event.track.kind);
+    console.log("🎥 onTrack fired:", userId, event.track.kind);
 
     let stream = event.streams?.[0];
 
@@ -205,14 +215,16 @@ const MeetingSection = () => {
       const exists = prev.find(u => u.userId === userId);
 
       if (exists) {
-        return prev.map(u => u.userId === userId ? { ...u, stream } : u);
+        return prev.map(u =>
+          u.userId === userId ? { ...u, stream } : u
+        );
       }
 
       return [...prev, { userId, stream }];
     });
   };
 
-  // Debug logs
+  // Debug states
   peer.oniceconnectionstatechange = () => {
     console.log("ICE:", peer.iceConnectionState);
   };
@@ -225,17 +237,16 @@ const MeetingSection = () => {
     console.log("SIGNALING:", peer.signalingState);
   };
 
-  // OFFER CREATION
+  // ✅ OFFER ONLY IF INITIATOR
   if (initiator) {
     peer.onnegotiationneeded = async () => {
       try {
+        // 🚨 STOP renegotiation loops
+        if (peer.signalingState !== "stable") return;
+
         console.log("📡 Creating offer for", userId);
 
-        const offer = await peer.createOffer({
-          offerToReceiveAudio: true,
-          offerToReceiveVideo: true
-        });
-
+        const offer = await peer.createOffer();
         await peer.setLocalDescription(offer);
 
         socketRef.current.emit("signal", {
@@ -244,13 +255,14 @@ const MeetingSection = () => {
         });
 
       } catch (err) {
-        console.error("Negotiation error:", err);
+        console.warn("Negotiation error:", err);
       }
     };
   }
 
   return peer;
 };
+
 
 
   return (
