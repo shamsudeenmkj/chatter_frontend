@@ -167,75 +167,91 @@ const MeetingSection = () => {
   // ===============================
   // CREATE PEER (FIXED)
   // ===============================
-  const createPeer = (userId, initiator) => {
-    const peer = new RTCPeerConnection(ICE_SERVERS);
+ const createPeer = (userId, initiator) => {
+  console.log("Creating peer for:", userId);
 
-    // SAME ORDER for ALL peers (prevents SDP mismatch)
-    peer.addTransceiver("audio", { direction: "sendrecv" });
-    peer.addTransceiver("video", { direction: "sendrecv" });
+  const peer = new RTCPeerConnection(ICE_SERVERS);
 
-    // Add tracks BEFORE offer
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => {
-        peer.addTrack(track, localStreamRef.current);
-      });
+  // Force SAME order everywhere
+  const audioTransceiver = peer.addTransceiver("audio", { direction: "sendrecv" });
+  const videoTransceiver = peer.addTransceiver("video", { direction: "sendrecv" });
+
+  // Add tracks BEFORE creating offer
+  if (localStreamRef.current) {
+    localStreamRef.current.getTracks().forEach(track => {
+      console.log("Adding local track:", track.kind);
+      peer.addTrack(track, localStreamRef.current);
+    });
+  }
+
+  peer.onicecandidate = e => {
+    if (e.candidate) {
+      socketRef.current.emit("signal", { to: userId, signal: e.candidate });
+    }
+  };
+
+  // 🔥 STREAM RECEIVE FIX
+  peer.ontrack = (event) => {
+    console.log("🎥 onTrack fired from:", userId, event.track.kind);
+
+    let stream = event.streams?.[0];
+
+    if (!stream) {
+      stream = new MediaStream();
+      stream.addTrack(event.track);
     }
 
-    peer.onicecandidate = e => {
-      if (e.candidate) {
-        socketRef.current.emit("signal", { to: userId, signal: e.candidate });
+    setRemoteUsers(prev => {
+      const exists = prev.find(u => u.userId === userId);
+
+      if (exists) {
+        return prev.map(u => u.userId === userId ? { ...u, stream } : u);
+      }
+
+      return [...prev, { userId, stream }];
+    });
+  };
+
+  // Debug logs
+  peer.oniceconnectionstatechange = () => {
+    console.log("ICE:", peer.iceConnectionState);
+  };
+
+  peer.onconnectionstatechange = () => {
+    console.log("CONNECTION:", peer.connectionState);
+  };
+
+  peer.onsignalingstatechange = () => {
+    console.log("SIGNALING:", peer.signalingState);
+  };
+
+  // OFFER CREATION
+  if (initiator) {
+    peer.onnegotiationneeded = async () => {
+      try {
+        console.log("📡 Creating offer for", userId);
+
+        const offer = await peer.createOffer({
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: true
+        });
+
+        await peer.setLocalDescription(offer);
+
+        socketRef.current.emit("signal", {
+          to: userId,
+          signal: peer.localDescription
+        });
+
+      } catch (err) {
+        console.error("Negotiation error:", err);
       }
     };
+  }
 
-    peer.ontrack = event => {
-      console.log("🎥 TRACK RECEIVED FROM:", userId, event.track.kind);
+  return peer;
+};
 
-      const stream = event.streams?.[0] || new MediaStream([event.track]);
-
-      setRemoteUsers(prev => {
-        const exists = prev.find(u => u.userId === userId);
-        if (exists) {
-          return prev.map(u => u.userId === userId ? { ...u, stream } : u);
-        }
-        return [...prev, { userId, stream }];
-      });
-    };
-
-    // LOGGING (optional debugging)
-    peer.oniceconnectionstatechange = () => {
-      console.log("ICE state:", peer.iceConnectionState);
-    };
-
-    peer.onconnectionstatechange = () => {
-      console.log("Connection state:", peer.connectionState);
-    };
-
-    peer.onsignalingstatechange = () => {
-      console.log("Signaling state:", peer.signalingState);
-    };
-
-    // INITIATOR CREATES OFFER
-    if (initiator) {
-      peer.onnegotiationneeded = async () => {
-        try {
-          console.log("📡 Creating offer for", userId);
-
-          const offer = await peer.createOffer();
-          await peer.setLocalDescription(offer);
-
-          socketRef.current.emit("signal", {
-            to: userId,
-            signal: peer.localDescription
-          });
-
-        } catch (err) {
-          console.warn("Negotiation error:", err);
-        }
-      };
-    }
-
-    return peer;
-  };
 
   return (
     <section className="meetingSc">
