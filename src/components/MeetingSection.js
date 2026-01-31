@@ -107,39 +107,63 @@ const MeetingSection = () => {
     });
 
     // WebRTC signals
-    socket.on("signal", async ({ from, signal }) => {
-  let peer = peersRef.current[from];
+  const createPeer = (userId, initiator) => {
+  const peer = new RTCPeerConnection(ICE_SERVERS);
 
-  if (!peer) {
-    peer = createPeer(from, false);
-    peersRef.current[from] = peer;
+  // IMPORTANT: Keep transceiver order SAME for everyone
+  const audioTransceiver = peer.addTransceiver("audio", { direction: "sendrecv" });
+  const videoTransceiver = peer.addTransceiver("video", { direction: "sendrecv" });
+
+  // Add local tracks BEFORE offer
+  if (mainVideo) {
+    mainVideo.getTracks().forEach(track => {
+      peer.addTrack(track, mainVideo);
+    });
   }
 
-  try {
-    if (signal.type) {
-      await peer.setRemoteDescription(new RTCSessionDescription(signal));
+  peer.onicecandidate = (e) => {
+    if (e.candidate) {
+      socketRef.current.emit("signal", { to: userId, signal: e.candidate });
+    }
+  };
 
-      if (signal.type === "offer") {
-        console.log("📨 Offer received, sending answer");
+  peer.ontrack = (event) => {
+    const stream = event.streams?.[0] || new MediaStream([event.track]);
 
-        const answer = await peer.createAnswer();
-        await peer.setLocalDescription(answer);
+    console.log("🎥 Remote stream received from", userId);
 
-        socket.emit("signal", {
-          to: from,
+    setRemoteUsers(prev => {
+      const exists = prev.find(u => u.userId === userId);
+      if (exists) {
+        return prev.map(u => u.userId === userId ? { ...u, stream } : u);
+      }
+      return [...prev, { userId, stream }];
+    });
+  };
+
+  // Only initiator creates offer
+  if (initiator) {
+    peer.onnegotiationneeded = async () => {
+      try {
+        console.log("📡 Creating offer for", userId);
+
+        const offer = await peer.createOffer();
+        await peer.setLocalDescription(offer);
+
+        socketRef.current.emit("signal", {
+          to: userId,
           signal: peer.localDescription
         });
+
+      } catch (err) {
+        console.warn("Negotiation error:", err);
       }
-    }
-
-    if (signal.candidate) {
-      await peer.addIceCandidate(new RTCIceCandidate(signal));
-    }
-
-  } catch (err) {
-    console.warn("Signal error:", err);
+    };
   }
-});
+
+  return peer;
+};
+
 
 
     socket.on("user-left", id => {
@@ -159,27 +183,27 @@ const MeetingSection = () => {
     });
   }
 
- const createPeer = (userId, initiator) => {
+const createPeer = (userId, initiator) => {
   const peer = new RTCPeerConnection(ICE_SERVERS);
 
-  // Always allow receiving
-  peer.addTransceiver("video", { direction: "sendrecv" });
-  peer.addTransceiver("audio", { direction: "sendrecv" });
+  // IMPORTANT: Keep transceiver order SAME for everyone
+  const audioTransceiver = peer.addTransceiver("audio", { direction: "sendrecv" });
+  const videoTransceiver = peer.addTransceiver("video", { direction: "sendrecv" });
 
-  // Add local tracks BEFORE negotiation
-  if (localStreamRef.current) {
-    localStreamRef.current.getTracks().forEach(track => {
-      peer.addTrack(track, localStreamRef.current);
+  // Add local tracks BEFORE offer
+  if (mainVideo) {
+    mainVideo.getTracks().forEach(track => {
+      peer.addTrack(track, mainVideo);
     });
   }
 
-  peer.onicecandidate = e => {
+  peer.onicecandidate = (e) => {
     if (e.candidate) {
       socketRef.current.emit("signal", { to: userId, signal: e.candidate });
     }
   };
 
-  peer.ontrack = event => {
+  peer.ontrack = (event) => {
     const stream = event.streams?.[0] || new MediaStream([event.track]);
 
     console.log("🎥 Remote stream received from", userId);
@@ -193,7 +217,7 @@ const MeetingSection = () => {
     });
   };
 
-  // Offer ONLY if initiator
+  // Only initiator creates offer
   if (initiator) {
     peer.onnegotiationneeded = async () => {
       try {
