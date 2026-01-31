@@ -116,7 +116,7 @@ const MeetingSection = () => {
     });
 
     // SIGNAL HANDLER
-  socket.on("signal", async ({ from, signal }) => {
+socket.on("signal", async ({ from, signal }) => {
   let peer = peersRef.current[from];
 
   if (!peer) {
@@ -125,7 +125,6 @@ const MeetingSection = () => {
   }
 
   try {
-    // SDP
     if (signal.type) {
       await peer.setRemoteDescription(signal);
 
@@ -142,7 +141,6 @@ const MeetingSection = () => {
       }
     }
 
-    // ICE
     if (signal.candidate) {
       await peer.addIceCandidate(signal);
     }
@@ -151,6 +149,7 @@ const MeetingSection = () => {
     console.warn("Signal error:", err);
   }
 });
+
 
 
     socket.on("user-left", id => {
@@ -178,34 +177,33 @@ const createPeer = (userId, initiator) => {
 
   const peer = new RTCPeerConnection(ICE_SERVERS);
 
-  // ✅ FIX: Always same transceiver order
+  // Track negotiation lock
+  peer.isMakingOffer = false;
+
+  // ALWAYS SAME ORDER
   peer.addTransceiver("audio", { direction: "sendrecv" });
   peer.addTransceiver("video", { direction: "sendrecv" });
 
-  // ✅ Add local tracks ONCE before offer
+  // Add tracks ONCE
   if (localStreamRef.current) {
     localStreamRef.current.getTracks().forEach(track => {
+      console.log("Added local track:", track.kind);
       peer.addTrack(track, localStreamRef.current);
-      console.log("Added track:", track.kind);
     });
   }
 
-  // ICE
-  peer.onicecandidate = (e) => {
+  // ICE candidates
+  peer.onicecandidate = e => {
     if (e.candidate) {
-      socketRef.current.emit("signal", {
-        to: userId,
-        signal: e.candidate
-      });
+      socketRef.current.emit("signal", { to: userId, signal: e.candidate });
     }
   };
 
-  // ✅ STREAM RECEIVE (FIXED)
+  // STREAM RECEIVE
   peer.ontrack = (event) => {
     console.log("🎥 onTrack fired:", userId, event.track.kind);
 
     let stream = event.streams?.[0];
-
     if (!stream) {
       stream = new MediaStream();
       stream.addTrack(event.track);
@@ -213,36 +211,28 @@ const createPeer = (userId, initiator) => {
 
     setRemoteUsers(prev => {
       const exists = prev.find(u => u.userId === userId);
-
       if (exists) {
         return prev.map(u =>
           u.userId === userId ? { ...u, stream } : u
         );
       }
-
       return [...prev, { userId, stream }];
     });
   };
 
-  // Debug states
-  peer.oniceconnectionstatechange = () => {
-    console.log("ICE:", peer.iceConnectionState);
-  };
+  // DEBUG
+  peer.oniceconnectionstatechange = () => console.log("ICE:", peer.iceConnectionState);
+  peer.onconnectionstatechange = () => console.log("CONNECTION:", peer.connectionState);
+  peer.onsignalingstatechange = () => console.log("SIGNALING:", peer.signalingState);
 
-  peer.onconnectionstatechange = () => {
-    console.log("CONNECTION:", peer.connectionState);
-  };
-
-  peer.onsignalingstatechange = () => {
-    console.log("SIGNALING:", peer.signalingState);
-  };
-
-  // ✅ OFFER ONLY IF INITIATOR
+  // OFFER — SAFE MODE
   if (initiator) {
     peer.onnegotiationneeded = async () => {
       try {
-        // 🚨 STOP renegotiation loops
+        if (peer.isMakingOffer) return;
         if (peer.signalingState !== "stable") return;
+
+        peer.isMakingOffer = true;
 
         console.log("📡 Creating offer for", userId);
 
@@ -256,12 +246,15 @@ const createPeer = (userId, initiator) => {
 
       } catch (err) {
         console.warn("Negotiation error:", err);
+      } finally {
+        peer.isMakingOffer = false;
       }
     };
   }
 
   return peer;
 };
+
 
 
 
