@@ -42,10 +42,10 @@ const MeetingSection = () => {
       .then(stream => {
         localStreamRef.current = stream;
         setMainVideo(stream);
-        setupAndJoin(userName);
+        setupAndJoin(stream, userName);
       })
       .catch(() => {
-        setupAndJoin(userName);
+        setupAndJoin(null, userName);
       });
 
     return cleanup;
@@ -53,7 +53,15 @@ const MeetingSection = () => {
 
   function cleanup() {
     const socket = socketRef.current;
-    if (socket) socket.disconnect?.();
+    if (socket) {
+      socket.off("all-users");
+      socket.off("user-joined");
+      socket.off("signal");
+      socket.off("user-left");
+      socket.off("audio-toggle");
+      socket.off("video-toggle");
+      socket.disconnect?.();
+    }
 
     Object.values(peersRef.current).forEach(peer => peer.close());
     peersRef.current = {};
@@ -63,18 +71,16 @@ const MeetingSection = () => {
     }
   }
 
-  function setupAndJoin(userName) {
+  function setupAndJoin(stream, userName) {
     const socket = socketRef.current;
     if (!socket) return;
 
-    socket.emit("join-room", {
-      roomId,
-      name: userName,
-      hasVideo: !!localStreamRef.current?.getVideoTracks().length,
-      hasAudio: !!localStreamRef.current?.getAudioTracks().length
-    });
+    const hasVideo = !!stream?.getVideoTracks().length;
+    const hasAudio = !!stream?.getAudioTracks().length;
 
-    // Existing users → YOU create peer as NON-initiator
+    socket.emit("join-room", { roomId, name: userName, hasVideo, hasAudio });
+
+    // EXISTING USERS
     socket.on("all-users", users => {
       users.forEach(u => {
         if (u.userId === socket.id) return;
@@ -84,23 +90,32 @@ const MeetingSection = () => {
           return [...prev, { ...u, stream: null }];
         });
 
-        const peer = createPeer(u.userId, false);
+        const peer = createPeer(u.userId, true);
         peersRef.current[u.userId] = peer;
       });
     });
 
-    // New user joins → YOU are initiator
+    // NEW USER JOIN
     socket.on("user-joined", u => {
       setRemoteUsers(prev => {
         if (prev.some(x => x.userId === u.userId)) return prev;
         return [...prev, { ...u, stream: null }];
       });
 
-      const peer = createPeer(u.userId, true);
-      peersRef.current[u.userId] = peer;
+      let peer = peersRef.current[u.userId];
+
+      if (!peer) {
+        peer = createPeer(u.userId, true);
+        peersRef.current[u.userId] = peer;
+      }
+
+      // 🔥 FORCE renegotiation so OLD users get NEW user's stream
+      if (peer.signalingState === "stable") {
+        peer.onnegotiationneeded?.();
+      }
     });
 
-    // WebRTC signals
+    // SIGNAL HANDLER
     socket.on("signal", async ({ from, signal }) => {
       let peer = peersRef.current[from];
 
@@ -114,8 +129,11 @@ const MeetingSection = () => {
           await peer.setRemoteDescription(new RTCSessionDescription(signal));
 
           if (signal.type === "offer") {
+            console.log("📨 Offer received → sending answer");
+
             const answer = await peer.createAnswer();
             await peer.setLocalDescription(answer);
+
             socket.emit("signal", { to: from, signal: peer.localDescription });
           }
         }
@@ -130,8 +148,10 @@ const MeetingSection = () => {
     });
 
     socket.on("user-left", id => {
-      if (peersRef.current[id]) peersRef.current[id].close();
-      delete peersRef.current[id];
+      if (peersRef.current[id]) {
+        peersRef.current[id].close();
+        delete peersRef.current[id];
+      }
       setRemoteUsers(prev => prev.filter(u => u.userId !== id));
     });
 
@@ -144,10 +164,13 @@ const MeetingSection = () => {
     });
   }
 
+  // ===============================
+  // CREATE PEER (FIXED)
+  // ===============================
   const createPeer = (userId, initiator) => {
     const peer = new RTCPeerConnection(ICE_SERVERS);
 
-    // SAME order for everyone
+    // SAME ORDER for ALL peers (prevents SDP mismatch)
     peer.addTransceiver("audio", { direction: "sendrecv" });
     peer.addTransceiver("video", { direction: "sendrecv" });
 
@@ -165,9 +188,9 @@ const MeetingSection = () => {
     };
 
     peer.ontrack = event => {
-      const stream = event.streams?.[0] || new MediaStream([event.track]);
+      console.log("🎥 TRACK RECEIVED FROM:", userId, event.track.kind);
 
-      console.log("🎥 Remote stream received from", userId);
+      const stream = event.streams?.[0] || new MediaStream([event.track]);
 
       setRemoteUsers(prev => {
         const exists = prev.find(u => u.userId === userId);
@@ -178,12 +201,33 @@ const MeetingSection = () => {
       });
     };
 
+    // LOGGING (optional debugging)
+    peer.oniceconnectionstatechange = () => {
+      console.log("ICE state:", peer.iceConnectionState);
+    };
+
+    peer.onconnectionstatechange = () => {
+      console.log("Connection state:", peer.connectionState);
+    };
+
+    peer.onsignalingstatechange = () => {
+      console.log("Signaling state:", peer.signalingState);
+    };
+
+    // INITIATOR CREATES OFFER
     if (initiator) {
       peer.onnegotiationneeded = async () => {
         try {
+          console.log("📡 Creating offer for", userId);
+
           const offer = await peer.createOffer();
           await peer.setLocalDescription(offer);
-          socketRef.current.emit("signal", { to: userId, signal: peer.localDescription });
+
+          socketRef.current.emit("signal", {
+            to: userId,
+            signal: peer.localDescription
+          });
+
         } catch (err) {
           console.warn("Negotiation error:", err);
         }
@@ -199,8 +243,17 @@ const MeetingSection = () => {
         <div className="row">
 
           <div className="col-xl-9">
-            <VideoCard video={mainVideo} name={name} roomId={roomId} socketRef={socketRef} />
-            <SubPrimeVideoCard userList={remoteUsers} mutedList={mutedList} />
+            <VideoCard
+              video={mainVideo}
+              name={name}
+              roomId={roomId}
+              socketRef={socketRef}
+            />
+
+            <SubPrimeVideoCard
+              userList={remoteUsers}
+              mutedList={mutedList}
+            />
           </div>
 
           <div className="col-xl-3">
@@ -215,6 +268,7 @@ const MeetingSection = () => {
 };
 
 export default MeetingSection;
+
 
 
 
