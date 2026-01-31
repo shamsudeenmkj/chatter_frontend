@@ -158,7 +158,7 @@ const MeetingSection = () => {
   //   // finally emit join
   //   socket.emit('join-room', roomId, userName);
   // };
-const setupAndJoin = (stream, userName) => {
+const setupAndJoin = (stream,userName) => {
   const socket = socketRef.current;
   if (!socket) return;
 
@@ -260,6 +260,8 @@ const setupAndJoin = (stream, userName) => {
 };
 
 
+//1
+
   // const createPeer = (userId, name, initiator) => {
   //   const peer = new RTCPeerConnection(ICE_SERVERS);
 
@@ -309,9 +311,44 @@ const setupAndJoin = (stream, userName) => {
 
   // OPTIONAL helper: if local user gets media AFTER joining with null,
   // you must add tracks to all existing peers so remote peers receive ontrack.
-  
-  const createPeer = (userId, initiator) => {
+
+//2
+//   const createPeer = (userId, initiator) => {
+//   const peer = new RTCPeerConnection(ICE_SERVERS);
+
+//   peer.onicecandidate = (e) => {
+//     if (e.candidate) {
+//       socketRef.current.emit('signal', { to: userId, signal: e.candidate });
+//     }
+//   };
+
+//   peer.ontrack = (event) => {
+//     const stream = event.streams[0];
+//     setRemoteUsers(prev => prev.map(u => u.userId === userId ? { ...u, stream } : u));
+//   };
+
+//   if (initiator) {
+//     peer.onnegotiationneeded = async () => {
+//       try {
+//         const offer = await peer.createOffer();
+//         await peer.setLocalDescription(offer);
+//         socketRef.current.emit('signal', { to: userId, signal: peer.localDescription });
+//       } catch (err) {
+//         console.warn(err);
+//       }
+//     };
+//   }
+
+//   return peer;
+// };
+
+//3
+const createPeer = (userId, initiator) => {
   const peer = new RTCPeerConnection(ICE_SERVERS);
+
+  // ✅ Always allow receiving media even if user has no camera/mic
+  peer.addTransceiver("video", { direction: "recvonly" });
+  peer.addTransceiver("audio", { direction: "recvonly" });
 
   peer.onicecandidate = (e) => {
     if (e.candidate) {
@@ -321,23 +358,27 @@ const setupAndJoin = (stream, userName) => {
 
   peer.ontrack = (event) => {
     const stream = event.streams[0];
-    setRemoteUsers(prev => prev.map(u => u.userId === userId ? { ...u, stream } : u));
+
+    setRemoteUsers(prev => {
+      const exists = prev.find(u => u.userId === userId);
+      if (exists) {
+        return prev.map(u => u.userId === userId ? { ...u, stream } : u);
+      }
+      return [...prev, { userId, stream }];
+    });
   };
 
   if (initiator) {
     peer.onnegotiationneeded = async () => {
-      try {
-        const offer = await peer.createOffer();
-        await peer.setLocalDescription(offer);
-        socketRef.current.emit('signal', { to: userId, signal: peer.localDescription });
-      } catch (err) {
-        console.warn(err);
-      }
+      const offer = await peer.createOffer();
+      await peer.setLocalDescription(offer);
+      socketRef.current.emit('signal', { to: userId, signal: peer.localDescription });
     };
   }
 
   return peer;
 };
+
 
   
   const addLocalTracksToPeers = (stream) => {
