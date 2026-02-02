@@ -38,35 +38,42 @@ const MeetingSection = () => {
     const userName = JSON.parse(storedUser).name;
     setName(userName);
 
+    // Initial Media Access
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
       .then(stream => {
         localStreamRef.current = stream;
         setMainVideo(stream);
         setupAndJoin(stream, userName);
       })
-      .catch(() => setupAndJoin(null, userName));
+      .catch(err => {
+        console.warn("Media access denied, joining as listener only.", err);
+        setupAndJoin(null, userName);
+      });
 
     return cleanup;
   }, []);
 
-  function cleanup() {
+  const cleanup = () => {
     const socket = socketRef.current;
-    if (!socket) return;
-
-    socket.off("all-users");
-    socket.off("user-joined");
-    socket.off("signal");
-    socket.off("user-left");
-    socket.off("audio-toggle");
-    socket.off("video-toggle");
+    if (socket) {
+      socket.off("all-users");
+      socket.off("user-joined");
+      socket.off("signal");
+      socket.off("user-left");
+      socket.off("audio-toggle");
+      socket.off("video-toggle");
+    }
 
     Object.values(peersRef.current).forEach(peer => peer.close());
     peersRef.current = {};
+    
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => track.stop());
+      localStreamRef.current = null;
+    }
+  };
 
-    localStreamRef.current?.getTracks().forEach(t => t.stop());
-  }
-
-  function setupAndJoin(stream, userName) {
+  const setupAndJoin = (stream, userName) => {
     const socket = socketRef.current;
     if (!socket) return;
 
@@ -77,79 +84,52 @@ const MeetingSection = () => {
       hasAudio: !!stream?.getAudioTracks().length
     });
 
-    // OLD USERS → CREATE OFFER
+    // Case A: You join and see everyone else. You are the INITIATOR.
     socket.on("all-users", users => {
       users.forEach(u => {
         if (u.userId === socket.id) return;
+        if (peersRef.current[u.userId]) return;
 
         const peer = createPeer(u.userId, true);
         peersRef.current[u.userId] = peer;
-
-        setRemoteUsers(prev =>
-          prev.some(x => x.userId === u.userId)
-            ? prev
-            : [...prev, { ...u, stream: null }]
-        );
+        setRemoteUsers(prev => [...prev, { ...u, stream: null }]);
       });
     });
 
-    // NEW USER → ANSWER ONLY
-socket.on("user-joined", u => {
-  const peer = createPeer(u.userId, false);
-  peersRef.current[u.userId] = peer;
+    // Case B: You are already in the room and someone new joins. They will initiate.
+    socket.on("user-joined", u => {
+      if (peersRef.current[u.userId]) return;
 
-  setRemoteUsers(prev =>
-    prev.some(x => x.userId === u.userId)
-      ? prev
-      : [...prev, { ...u, stream: null }]
-  );
+      const peer = createPeer(u.userId, false);
+      peersRef.current[u.userId] = peer;
+      setRemoteUsers(prev => [...prev, { ...u, stream: null }]);
+    });
 
-  // 🔥 IMPORTANT: Tell OLD USER to renegotiate
-  const oldPeer = peersRef.current[u.userId];
-  if (oldPeer && oldPeer.signalingState === "stable") {
-    oldPeer.dispatchEvent(new Event("negotiationneeded"));
-  }
-});
-
-
-    // SIGNAL HANDLER
     socket.on("signal", async ({ from, signal }) => {
-      let peer = peersRef.current[from];
-
-      if (!peer) {
-        peer = createPeer(from, false);
-        peersRef.current[from] = peer;
-      }
+      const peer = peersRef.current[from];
+      if (!peer) return;
 
       try {
-        // SDP
         if (signal.type) {
-          await peer.setRemoteDescription(signal);
-
+          await peer.setRemoteDescription(new RTCSessionDescription(signal));
           if (signal.type === "offer") {
             const answer = await peer.createAnswer();
             await peer.setLocalDescription(answer);
-
-            socket.emit("signal", {
-              to: from,
-              signal: peer.localDescription
-            });
+            socket.emit("signal", { to: from, signal: peer.localDescription });
           }
+        } else if (signal.candidate) {
+          await peer.addIceCandidate(new RTCIceCandidate(signal));
         }
-
-        // ICE
-        if (signal.candidate) {
-          await peer.addIceCandidate(signal);
-        }
-
       } catch (err) {
-        console.warn("Signal error:", err);
+        console.error("Signaling error:", err);
       }
     });
 
     socket.on("user-left", id => {
-      peersRef.current[id]?.close();
-      delete peersRef.current[id];
+      if (peersRef.current[id]) {
+        peersRef.current[id].close();
+        delete peersRef.current[id];
+      }
       setRemoteUsers(prev => prev.filter(u => u.userId !== id));
     });
 
@@ -158,85 +138,52 @@ socket.on("user-joined", u => {
     });
 
     socket.on("video-toggle", ({ userId, videoOff }) => {
-      setRemoteUsers(prev =>
-        prev.map(u => u.userId === userId ? { ...u, videoOff } : u)
-      );
+      setRemoteUsers(prev => prev.map(u => u.userId === userId ? { ...u, videoOff } : u));
     });
-  }
+  };
 
-  // ===============================
-  // CREATE PEER (STABLE & SAFE)
-  // ===============================
   const createPeer = (userId, initiator) => {
-    console.log("Creating peer for:", userId);
-
     const peer = new RTCPeerConnection(ICE_SERVERS);
-    peer.isMakingOffer = false;
+    peer.makingOffer = false;
 
-    // FIXED TRANSCEIVER ORDER
-    peer.addTransceiver("audio", { direction: "sendrecv" });
-    peer.addTransceiver("video", { direction: "sendrecv" });
-
-    // ADD TRACKS ONCE
-    // Always attach tracks
-if (localStreamRef.current) {
-  localStreamRef.current.getTracks().forEach(track => {
-    const exists = peer.getSenders().find(s => s.track === track);
-    if (!exists) {
-      peer.addTrack(track, localStreamRef.current);
+    // Add local tracks if they exist
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => {
+        peer.addTrack(track, localStreamRef.current);
+      });
+    } else {
+      // Force transceivers so we can at least receive media
+      peer.addTransceiver("video", { direction: "recvonly" });
+      peer.addTransceiver("audio", { direction: "recvonly" });
     }
-  });
-}
-
 
     peer.onicecandidate = e => {
       if (e.candidate) {
-        socketRef.current.emit("signal", {
-          to: userId,
-          signal: e.candidate
-        });
+        socketRef.current.emit("signal", { to: userId, signal: e.candidate });
       }
     };
 
     peer.ontrack = event => {
-      console.log("🎥 onTrack fired:", userId, event.track.kind);
-
-      const stream = event.streams?.[0] || new MediaStream([event.track]);
-
-      setRemoteUsers(prev => {
-        const exists = prev.find(u => u.userId === userId);
-        if (exists) {
-          return prev.map(u =>
-            u.userId === userId ? { ...u, stream } : u
-          );
-        }
-        return [...prev, { userId, stream }];
-      });
+      const remoteStream = event.streams[0];
+      setRemoteUsers(prev => prev.map(u => 
+        u.userId === userId ? { ...u, stream: remoteStream } : u
+      ));
     };
 
-    // ONLY INITIATOR MAKES OFFER
-    if (initiator) {
-      peer.onnegotiationneeded = async () => {
-        if (peer.isMakingOffer || peer.signalingState !== "stable") return;
-
-        peer.isMakingOffer = true;
-
-        try {
-          console.log("📡 Creating offer for", userId);
-
-          const offer = await peer.createOffer();
-          await peer.setLocalDescription(offer);
-
-          socketRef.current.emit("signal", {
-            to: userId,
-            signal: peer.localDescription
-          });
-
-        } finally {
-          peer.isMakingOffer = false;
-        }
-      };
-    }
+    // Perfect Negotiation Logic
+    peer.onnegotiationneeded = async () => {
+      if (!initiator || peer.signalingState !== "stable" || peer.makingOffer) return;
+      try {
+        peer.makingOffer = true;
+        const offer = await peer.createOffer();
+        await peer.setLocalDescription(offer);
+        socketRef.current.emit("signal", { to: userId, signal: peer.localDescription });
+      } catch (err) {
+        console.error("Negotiation error:", err);
+      } finally {
+        peer.makingOffer = false;
+      }
+    };
 
     return peer;
   };
@@ -245,7 +192,6 @@ if (localStreamRef.current) {
     <section className="meetingSc">
       <div className="container">
         <div className="row">
-
           <div className="col-xl-9">
             <VideoCard
               video={mainVideo}
@@ -253,18 +199,15 @@ if (localStreamRef.current) {
               roomId={roomId}
               socketRef={socketRef}
             />
-
             <SubPrimeVideoCard
               userList={remoteUsers}
               mutedList={mutedList}
             />
           </div>
-
           <div className="col-xl-3">
             <ChatCard />
             <LinkSharingCard />
           </div>
-
         </div>
       </div>
     </section>
@@ -272,6 +215,307 @@ if (localStreamRef.current) {
 };
 
 export default MeetingSection;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// import React, { useEffect, useRef, useState } from "react";
+// import { useNavigate, useParams } from "react-router-dom";
+// import VideoCard from "./videoCard";
+// import ChatCard from "./ChatCard";
+// import SubPrimeVideoCard from "./SubPrimeVideoCard";
+// import LinkSharingCard from "./LinkSharingCard";
+// import { useSocket } from "../sockets/socket";
+
+// const ICE_SERVERS = {
+//   iceServers: [
+//     { urls: "stun:stun.l.google.com:19302" },
+//     { urls: "turn:relay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+//     { urls: "turn:relay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+//     { urls: "turn:relay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" }
+//   ]
+// };
+
+// const MeetingSection = () => {
+//   const { roomId } = useParams();
+//   const navigate = useNavigate();
+//   const socketRef = useSocket();
+
+//   const peersRef = useRef({});
+//   const localStreamRef = useRef(null);
+
+//   const [name, setName] = useState("");
+//   const [remoteUsers, setRemoteUsers] = useState([]);
+//   const [mainVideo, setMainVideo] = useState(null);
+//   const [mutedList, setMutedList] = useState([]);
+
+//   useEffect(() => {
+//     const storedUser = localStorage.getItem("user");
+//     if (!storedUser) {
+//       navigate(`/login/${roomId}`);
+//       return;
+//     }
+
+//     const userName = JSON.parse(storedUser).name;
+//     setName(userName);
+
+//     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+//       .then(stream => {
+//         localStreamRef.current = stream;
+//         setMainVideo(stream);
+//         setupAndJoin(stream, userName);
+//       })
+//       .catch(() => setupAndJoin(null, userName));
+
+//     return cleanup;
+//   }, []);
+
+//   function cleanup() {
+//     const socket = socketRef.current;
+//     if (!socket) return;
+
+//     socket.off("all-users");
+//     socket.off("user-joined");
+//     socket.off("signal");
+//     socket.off("user-left");
+//     socket.off("audio-toggle");
+//     socket.off("video-toggle");
+
+//     Object.values(peersRef.current).forEach(peer => peer.close());
+//     peersRef.current = {};
+
+//     localStreamRef.current?.getTracks().forEach(t => t.stop());
+//   }
+
+//   function setupAndJoin(stream, userName) {
+//     const socket = socketRef.current;
+//     if (!socket) return;
+
+//     socket.emit("join-room", {
+//       roomId,
+//       name: userName,
+//       hasVideo: !!stream?.getVideoTracks().length,
+//       hasAudio: !!stream?.getAudioTracks().length
+//     });
+
+//     // OLD USERS → CREATE OFFER
+//     socket.on("all-users", users => {
+//       users.forEach(u => {
+//         if (u.userId === socket.id) return;
+
+//         const peer = createPeer(u.userId, true);
+//         peersRef.current[u.userId] = peer;
+
+//         setRemoteUsers(prev =>
+//           prev.some(x => x.userId === u.userId)
+//             ? prev
+//             : [...prev, { ...u, stream: null }]
+//         );
+//       });
+//     });
+
+//     // NEW USER → ANSWER ONLY
+// socket.on("user-joined", u => {
+//   const peer = createPeer(u.userId, false);
+//   peersRef.current[u.userId] = peer;
+
+//   setRemoteUsers(prev =>
+//     prev.some(x => x.userId === u.userId)
+//       ? prev
+//       : [...prev, { ...u, stream: null }]
+//   );
+
+//   // 🔥 IMPORTANT: Tell OLD USER to renegotiate
+//   const oldPeer = peersRef.current[u.userId];
+//   if (oldPeer && oldPeer.signalingState === "stable") {
+//     oldPeer.dispatchEvent(new Event("negotiationneeded"));
+//   }
+// });
+
+
+//     // SIGNAL HANDLER
+//     socket.on("signal", async ({ from, signal }) => {
+//       let peer = peersRef.current[from];
+
+//       if (!peer) {
+//         peer = createPeer(from, false);
+//         peersRef.current[from] = peer;
+//       }
+
+//       try {
+//         // SDP
+//         if (signal.type) {
+//           await peer.setRemoteDescription(signal);
+
+//           if (signal.type === "offer") {
+//             const answer = await peer.createAnswer();
+//             await peer.setLocalDescription(answer);
+
+//             socket.emit("signal", {
+//               to: from,
+//               signal: peer.localDescription
+//             });
+//           }
+//         }
+
+//         // ICE
+//         if (signal.candidate) {
+//           await peer.addIceCandidate(signal);
+//         }
+
+//       } catch (err) {
+//         console.warn("Signal error:", err);
+//       }
+//     });
+
+//     socket.on("user-left", id => {
+//       peersRef.current[id]?.close();
+//       delete peersRef.current[id];
+//       setRemoteUsers(prev => prev.filter(u => u.userId !== id));
+//     });
+
+//     socket.on("audio-toggle", ({ userId, muted }) => {
+//       setMutedList(prev => muted ? [...prev, userId] : prev.filter(id => id !== userId));
+//     });
+
+//     socket.on("video-toggle", ({ userId, videoOff }) => {
+//       setRemoteUsers(prev =>
+//         prev.map(u => u.userId === userId ? { ...u, videoOff } : u)
+//       );
+//     });
+//   }
+
+//   // ===============================
+//   // CREATE PEER (STABLE & SAFE)
+//   // ===============================
+//   const createPeer = (userId, initiator) => {
+//     console.log("Creating peer for:", userId);
+
+//     const peer = new RTCPeerConnection(ICE_SERVERS);
+//     peer.isMakingOffer = false;
+
+//     // FIXED TRANSCEIVER ORDER
+//     peer.addTransceiver("audio", { direction: "sendrecv" });
+//     peer.addTransceiver("video", { direction: "sendrecv" });
+
+//     // ADD TRACKS ONCE
+//     // Always attach tracks
+// if (localStreamRef.current) {
+//   localStreamRef.current.getTracks().forEach(track => {
+//     const exists = peer.getSenders().find(s => s.track === track);
+//     if (!exists) {
+//       peer.addTrack(track, localStreamRef.current);
+//     }
+//   });
+// }
+
+
+//     peer.onicecandidate = e => {
+//       if (e.candidate) {
+//         socketRef.current.emit("signal", {
+//           to: userId,
+//           signal: e.candidate
+//         });
+//       }
+//     };
+
+//     peer.ontrack = event => {
+//       console.log("🎥 onTrack fired:", userId, event.track.kind);
+
+//       const stream = event.streams?.[0] || new MediaStream([event.track]);
+
+//       setRemoteUsers(prev => {
+//         const exists = prev.find(u => u.userId === userId);
+//         if (exists) {
+//           return prev.map(u =>
+//             u.userId === userId ? { ...u, stream } : u
+//           );
+//         }
+//         return [...prev, { userId, stream }];
+//       });
+//     };
+
+//     // ONLY INITIATOR MAKES OFFER
+//     if (initiator) {
+//       peer.onnegotiationneeded = async () => {
+//         if (peer.isMakingOffer || peer.signalingState !== "stable") return;
+
+//         peer.isMakingOffer = true;
+
+//         try {
+//           console.log("📡 Creating offer for", userId);
+
+//           const offer = await peer.createOffer();
+//           await peer.setLocalDescription(offer);
+
+//           socketRef.current.emit("signal", {
+//             to: userId,
+//             signal: peer.localDescription
+//           });
+
+//         } finally {
+//           peer.isMakingOffer = false;
+//         }
+//       };
+//     }
+
+//     return peer;
+//   };
+
+//   return (
+//     <section className="meetingSc">
+//       <div className="container">
+//         <div className="row">
+
+//           <div className="col-xl-9">
+//             <VideoCard
+//               video={mainVideo}
+//               name={name}
+//               roomId={roomId}
+//               socketRef={socketRef}
+//             />
+
+//             <SubPrimeVideoCard
+//               userList={remoteUsers}
+//               mutedList={mutedList}
+//             />
+//           </div>
+
+//           <div className="col-xl-3">
+//             <ChatCard />
+//             <LinkSharingCard />
+//           </div>
+
+//         </div>
+//       </div>
+//     </section>
+//   );
+// };
+
+// export default MeetingSection;
 
 
 
