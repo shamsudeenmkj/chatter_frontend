@@ -7,29 +7,28 @@ import SubPrimeVideoCard from "./SubPrimeVideoCard";
 import LinkSharingCard from "./LinkSharingCard";
 import { useSocket } from "../sockets/socket";
 
-// ⚠️ Configuration for ExpressTURN (Bypasses firewalls at 15km)
-// ⚠️ Update these with your EXACT Dashboard Username & Password
 const ICE_SERVERS = {
   iceServers: [
-    // 1. TURNS (TLS) on Port 443 - The most reliable for different networks
+    // 1. STUN (Mirror)
+    { urls: "stun:free.expressturn.com:3478" },
+    
+    // 2. TURN over UDP (Standard)
     { 
-      urls: "turns:relay.expressturn.com:443?transport=tcp", 
+      urls: "turn:free.expressturn.com:3478?transport=udp", 
       username: "000000002085384559", 
       credential: "oQIy00pPRpYEeWLCpFbtjbNntj4=" 
     },
-    // 2. TURN over TCP on Port 80 - Mimics standard web traffic
+    
+    // 3. TURN over TCP on Port 443 (The "Firewall Breaker")
+    // Note: Even if the host is 'free', port 443 is usually supported 
+    // for bypassing strict filters.
     { 
-      urls: "turn:relay.expressturn.com:80?transport=tcp", 
+      urls: "turn:free.expressturn.com:443?transport=tcp", 
       username: "000000002085384559", 
       credential: "oQIy00pPRpYEeWLCpFbtjbNntj4=" 
-    },
-    // 3. Fallback STUN
-    { urls: "stun:relay.expressturn.com:3478" }
+    }
   ],
-  iceCandidatePoolSize: 10,
-  // 💡 MANDATORY: This forces the browser to use the relay immediately 
-  // if direct connection is slow or blocked.
-  iceTransportPolicy: 'all' 
+  iceCandidatePoolSize: 10
 };
 
 const MeetingSection = () => {
