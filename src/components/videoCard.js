@@ -24,19 +24,18 @@ const VideoCard = ({ video, name, peersRef, localStreamRef, screenStreamRef, set
         screenStreamRef.current = screenStream;
         const screenTrack = screenStream.getVideoTracks()[0];
 
-        // 1. Update State first
+        // 1. Update parent state IMMEDIATELY
         setIsSharing(true);
 
-        // 2. Replace track for everyone already in the call
+        // 2. Replace tracks for existing peers
         Object.values(peersRef.current).forEach(peer => {
           const sender = peer.getSenders().find(s => s.track?.kind === "video");
           if (sender) sender.replaceTrack(screenTrack);
         });
 
         setMainVideo(screenStream);
-
         screenTrack.onended = () => stopScreenShare();
-      } catch (err) { console.error("Sharing failed", err); }
+      } catch (err) { console.error(err); }
     } else {
       stopScreenShare();
     }
@@ -44,23 +43,21 @@ const VideoCard = ({ video, name, peersRef, localStreamRef, screenStreamRef, set
 
   const stopScreenShare = () => {
     screenStreamRef.current?.getTracks().forEach(t => t.stop());
-    const cameraTrack = localStreamRef.current?.getVideoTracks()[0];
-
-    // If camera exists, swap back. If no camera, they just see the avatar.
-    if (cameraTrack) {
-        Object.values(peersRef.current).forEach(peer => {
-            const sender = peer.getSenders().find(s => s.track?.kind === "video");
-            if (sender) sender.replaceTrack(cameraTrack);
-        });
-    }
-
-    setMainVideo(localStreamRef.current);
     setIsSharing(false);
+
+    const cameraTrack = localStreamRef.current?.getVideoTracks()[0];
+    if (cameraTrack) {
+      Object.values(peersRef.current).forEach(peer => {
+        const sender = peer.getSenders().find(s => s.track?.kind === "video");
+        if (sender) sender.replaceTrack(cameraTrack);
+      });
+    }
+    setMainVideo(localStreamRef.current);
   };
 
   const toggleVideo = () => {
-    if (localStreamRef.current && localStreamRef.current.getVideoTracks()[0]) {
-      const track = localStreamRef.current.getVideoTracks()[0];
+    const track = localStreamRef.current?.getVideoTracks()[0];
+    if (track) {
       track.enabled = !track.enabled;
       setCam(track.enabled);
       socketRef.current.emit('video-toggle', { roomId, videoOff: !track.enabled });
@@ -68,8 +65,8 @@ const VideoCard = ({ video, name, peersRef, localStreamRef, screenStreamRef, set
   };
 
   const toggleAudio = () => {
-    if (localStreamRef.current && localStreamRef.current.getAudioTracks()[0]) {
-      const track = localStreamRef.current.getAudioTracks()[0];
+    const track = localStreamRef.current?.getAudioTracks()[0];
+    if (track) {
       track.enabled = !track.enabled;
       setMic(track.enabled);
       socketRef.current.emit('audio-toggle', { roomId, muted: !track.enabled });
@@ -80,13 +77,13 @@ const VideoCard = ({ video, name, peersRef, localStreamRef, screenStreamRef, set
     <div className='videoCnt'>
       <div className='hostScreen'>
         {video ? (
-            <video ref={videoElementRef} autoPlay muted playsInline className='PrimeVideoDisplay' />
+          <video ref={videoElementRef} autoPlay muted playsInline className='PrimeVideoDisplay' />
         ) : (
-            <div className='PrimeVideoDisplay' style={{backgroundColor: '#333', display: 'flex', justifyContent: 'center', alignItems: 'center'}}>
-                <div style={{fontSize: '5rem', color: 'white'}}>{name[0]}</div>
-            </div>
+          <div className='PrimeVideoDisplay' style={{backgroundColor: '#1a1a1a', display: 'flex', justifyContent: 'center', alignItems: 'center'}}>
+            <div style={{fontSize: '80px', color: 'white'}}>{name?.[0]}</div>
+          </div>
         )}
-        <p className='mainStreamerName'>{name} {isSharing ? "(Presenting Screen)" : ""}</p>
+        <p className='mainStreamerName'>{name} {isSharing ? "(Presenting)" : ""}</p>
         <div className='primaryHostIcons'>
           <div className="commonHostIcons" onClick={toggleAudio}>
             <img src={mainMic ? MainMicOn : MainMicOff} alt="Mic" />
@@ -94,10 +91,10 @@ const VideoCard = ({ video, name, peersRef, localStreamRef, screenStreamRef, set
           <div className="commonHostIcons" onClick={toggleVideo}>
             <img src={mainCam ? MainCamOn : MainCamOff} alt="Cam" />
           </div>
-          <div className="commonHostIcons" onClick={handleScreenShare} style={{ backgroundColor: isSharing ? '#ff4d4d' : '' }}>
+          <div className="commonHostIcons" onClick={handleScreenShare} style={{backgroundColor: isSharing ? 'red' : ''}}>
             <img src={screenShare} alt="Share" />
           </div>
-          <div className="commonHostIcons" onClick={() => window.location.href = "/"}>
+          <div className="commonHostIcons" onClick={() => window.location.href="/"}>
             <img src={endVideo} alt="End" />
           </div>
         </div>

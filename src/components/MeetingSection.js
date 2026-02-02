@@ -15,7 +15,7 @@ const ICE_SERVERS = {
       credential: "oQIy00pPRpYEeWLCpFbtjbNntj4=" 
     },
     { 
-      urls: "turn:free.expressturn.com:3478?transport=tcp", 
+      urls: "turn:free.expressturn.com:443?transport=tcp", 
       username: "000000002085384559", 
       credential: "oQIy00pPRpYEeWLCpFbtjbNntj4=" 
     }
@@ -38,8 +38,9 @@ const MeetingSection = () => {
   const [name, setName] = useState("");
   const [remoteUsers, setRemoteUsers] = useState([]);
   const [mainVideo, setMainVideo] = useState(null);
-  const [isSharing, setIsSharing] = useState(false); // Track sharing state globally
-const [mutedList, setMutedList] = useState([])
+  const [isSharing, setIsSharing] = useState(false); // Shared globally with VideoCard
+  const [mutedList, setMutedList] = useState([]);
+
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
     if (!storedUser) {
@@ -49,7 +50,6 @@ const [mutedList, setMutedList] = useState([])
     const userName = JSON.parse(storedUser).name;
     setName(userName);
 
-    // Initial Media Access with No-Camera Fallback
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
       .then(stream => {
         localStreamRef.current = stream;
@@ -57,10 +57,11 @@ const [mutedList, setMutedList] = useState([])
         setupAndJoin(stream, userName);
       })
       .catch(() => {
+        // Fallback for no camera
         navigator.mediaDevices.getUserMedia({ audio: true })
-          .then(audioStream => {
-            localStreamRef.current = audioStream;
-            setupAndJoin(audioStream, userName);
+          .then(aStream => {
+            localStreamRef.current = aStream;
+            setupAndJoin(aStream, userName);
           })
           .catch(() => setupAndJoin(null, userName));
       });
@@ -71,10 +72,10 @@ const [mutedList, setMutedList] = useState([])
   function cleanup() {
     const socket = socketRef.current;
     if (socket) {
-        socket.off("all-users");
-        socket.off("user-joined");
-        socket.off("signal");
-        socket.off("user-left");
+      socket.off("all-users");
+      socket.off("user-joined");
+      socket.off("signal");
+      socket.off("user-left");
     }
     Object.values(peersRef.current).forEach(peer => peer.close());
     localStreamRef.current?.getTracks().forEach(t => t.stop());
@@ -89,7 +90,6 @@ const [mutedList, setMutedList] = useState([])
     socket.on("all-users", users => {
       users.forEach(u => u.userId !== socket.id && createPeer(u.userId, u.name));
     });
-
     socket.on("user-joined", u => createPeer(u.userId, u.name));
 
     socket.on("signal", async ({ from, signal }) => {
@@ -110,7 +110,7 @@ const [mutedList, setMutedList] = useState([])
         } else if (signal.candidate) {
           await peer.addIceCandidate(new RTCIceCandidate(signal));
         }
-      } catch (err) { console.error("Signaling Error:", err); }
+      } catch (err) { console.error(err); }
     });
 
     socket.on("user-left", id => {
@@ -127,17 +127,16 @@ const [mutedList, setMutedList] = useState([])
     
     setRemoteUsers(prev => [...prev, { userId, name: userName, stream: null }]);
 
-    // --- FIX FOR NEW JOINERS ---
-    // Choose only ONE track to send based on current activity
+    // --- LOGIC: CHOICE OF TRACK FOR NEW JOINER ---
     let videoTrack;
     if (isSharing && screenStreamRef.current) {
-        videoTrack = screenStreamRef.current.getVideoTracks()[0];
+      videoTrack = screenStreamRef.current.getVideoTracks()[0];
     } else if (localStreamRef.current) {
-        videoTrack = localStreamRef.current.getVideoTracks()[0];
+      videoTrack = localStreamRef.current.getVideoTracks()[0];
     }
 
     if (videoTrack) {
-        peer.addTrack(videoTrack, isSharing ? screenStreamRef.current : localStreamRef.current);
+      peer.addTrack(videoTrack, isSharing ? screenStreamRef.current : localStreamRef.current);
     }
     
     const audioTrack = localStreamRef.current?.getAudioTracks()[0];
@@ -149,10 +148,6 @@ const [mutedList, setMutedList] = useState([])
 
     peer.ontrack = e => {
       setRemoteUsers(prev => prev.map(u => u.userId === userId ? { ...u, stream: e.streams[0] } : u));
-    };
-
-    peer.oniceconnectionstatechange = () => {
-      if (peer.iceConnectionState === "failed") peer.restartIce();
     };
 
     peer.onnegotiationneeded = async () => {
@@ -167,28 +162,29 @@ const [mutedList, setMutedList] = useState([])
 
   return (
     <section className="meetingSc">
-        <div className="container">
-            <div className="row">
-                <div className="col-xl-9">
-                    <VideoCard 
-                        video={mainVideo} 
-                        name={name} 
-                        peersRef={peersRef} 
-                        localStreamRef={localStreamRef}
-                        screenStreamRef={screenStreamRef}
-                        setMainVideo={setMainVideo}
-                        isSharing={isSharing}
-                        setIsSharing={setIsSharing}
-                        socketRef={socketRef}
-                        roomId={roomId}
-                    />
-<SubPrimeVideoCard userList={remoteUsers} mutedList={mutedList} />                </div>
-                <div className="col-xl-3">
-                    <ChatCard />
-                    <LinkSharingCard />
-                </div>
-            </div>
+      <div className="container">
+        <div className="row">
+          <div className="col-xl-9">
+            <VideoCard 
+              video={mainVideo} 
+              name={name} 
+              peersRef={peersRef} 
+              localStreamRef={localStreamRef}
+              screenStreamRef={screenStreamRef}
+              setMainVideo={setMainVideo}
+              isSharing={isSharing}
+              setIsSharing={setIsSharing}
+              socketRef={socketRef}
+              roomId={roomId}
+            />
+            <SubPrimeVideoCard userList={remoteUsers} mutedList={mutedList} />
+          </div>
+          <div className="col-xl-3">
+            <ChatCard />
+            <LinkSharingCard />
+          </div>
         </div>
+      </div>
     </section>
   );
 };
