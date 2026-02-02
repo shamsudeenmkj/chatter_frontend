@@ -9,23 +9,22 @@ import { useSocket } from "../sockets/socket";
 const ICE_SERVERS = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
     { 
       urls: "turn:openrelay.metered.ca:80", 
       username: "openrelayproject", 
       credential: "openrelayproject" 
     },
     { 
-      urls: "turn:openrelay.metered.ca:443", 
-      username: "openrelayproject", 
-      credential: "openrelayproject" 
-    },
-    { 
+      // Force TCP on 443 - this is the "Firewall Breaker"
       urls: "turn:openrelay.metered.ca:443?transport=tcp", 
       username: "openrelayproject", 
       credential: "openrelayproject" 
     }
   ],
-  iceCandidatePoolSize: 10
+  iceCandidatePoolSize: 10,
+  // Force the browser to prioritize Relay candidates if host fails
+  iceTransportPolicy: 'all' 
 };
 
 const MeetingSection = () => {
@@ -192,6 +191,15 @@ const MeetingSection = () => {
         makingOfferRef.current[userId] = false;
       }
     };
+
+    peer.oniceconnectionstatechange = () => {
+  console.log(`Connection state with ${userId}: ${peer.iceConnectionState}`);
+  
+  if (peer.iceConnectionState === "failed") {
+    console.warn("Connection failed. Attempting ICE Restart...");
+    peer.restartIce(); // This is a built-in WebRTC command to find new paths
+  }
+};
 
     return peer;
   };
