@@ -6,17 +6,10 @@ import SubPrimeVideoCard from "./SubPrimeVideoCard";
 import LinkSharingCard from "./LinkSharingCard";
 import { useSocket } from "../sockets/socket";
 
-// ⚠️ Use these updated servers to bypass firewall blocks
 const ICE_SERVERS = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
     { 
-      urls: "turn:openrelay.metered.ca:80", 
-      username: "openrelayproject", 
-      credential: "openrelayproject" 
-    },
-    { 
-      // This is the most reliable port for different networks
       urls: "turn:openrelay.metered.ca:443?transport=tcp", 
       username: "openrelayproject", 
       credential: "openrelayproject" 
@@ -33,8 +26,8 @@ const MeetingSection = () => {
   const peersRef = useRef({});
   const localStreamRef = useRef(null);
   
-  // Track handshake state for "Perfect Negotiation"
-  const makingOfferRef = useRef({}); 
+  // Handshake synchronization refs
+  const makingOfferRef = useRef({});
   const ignoreOfferRef = useRef({});
 
   const [name, setName] = useState("");
@@ -48,7 +41,6 @@ const MeetingSection = () => {
       navigate(`/login/${roomId}`);
       return;
     }
-
     const userName = JSON.parse(storedUser).name;
     setName(userName);
 
@@ -73,30 +65,19 @@ const MeetingSection = () => {
     }
     Object.values(peersRef.current).forEach(peer => peer.close());
     peersRef.current = {};
-    localStreamRef.current?.getTracks().forEach(t => t.stop());
   }
 
   function setupAndJoin(stream, userName) {
     const socket = socketRef.current;
     if (!socket) return;
 
-    socket.emit("join-room", {
-      roomId,
-      name: userName,
-      hasVideo: !!stream?.getVideoTracks().length,
-      hasAudio: !!stream?.getAudioTracks().length
-    });
+    socket.emit("join-room", { roomId, name: userName });
 
     socket.on("all-users", users => {
-      users.forEach(u => {
-        if (u.userId === socket.id) return;
-        createPeer(u.userId, u.name);
-      });
+      users.forEach(u => u.userId !== socket.id && createPeer(u.userId, u.name));
     });
 
-    socket.on("user-joined", u => {
-      createPeer(u.userId, u.name);
-    });
+    socket.on("user-joined", u => createPeer(u.userId, u.name));
 
     socket.on("signal", async ({ from, signal }) => {
       const peer = peersRef.current[from];
@@ -104,11 +85,11 @@ const MeetingSection = () => {
 
       try {
         if (signal.type) {
-          // PERFECT NEGOTIATION: Handle collisions
+          // PERFECT NEGOTIATION LOGIC
           const offerCollision = signal.type === "offer" && 
             (makingOfferRef.current[from] || peer.signalingState !== "stable");
           
-          // Use socket.id to decide who "backs down" (Polite Peer pattern)
+          // Polite peer backs down on collision (based on socket ID)
           const isPolite = socket.id > from;
           ignoreOfferRef.current[from] = !isPolite && offerCollision;
 
@@ -120,10 +101,14 @@ const MeetingSection = () => {
             socket.emit("signal", { to: from, signal: peer.localDescription });
           }
         } else if (signal.candidate) {
-          await peer.addIceCandidate(new RTCIceCandidate(signal));
+          try {
+            await peer.addIceCandidate(new RTCIceCandidate(signal));
+          } catch (err) {
+            if (!ignoreOfferRef.current[from]) throw err;
+          }
         }
       } catch (err) {
-        console.error("Signal Handling Error:", err);
+        console.error("Signaling Error:", err);
       }
     });
 
@@ -136,45 +121,31 @@ const MeetingSection = () => {
 
   const createPeer = (userId, userName) => {
     if (peersRef.current[userId]) return;
-
     const peer = new RTCPeerConnection(ICE_SERVERS);
     peersRef.current[userId] = peer;
     
     setRemoteUsers(prev => [...prev, { userId, name: userName, stream: null }]);
 
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => {
-        peer.addTrack(track, localStreamRef.current);
-      });
+      localStreamRef.current.getTracks().forEach(track => peer.addTrack(track, localStreamRef.current));
     }
 
     peer.onicecandidate = e => {
-      if (e.candidate) {
-        socketRef.current.emit("signal", { to: userId, signal: e.candidate });
-      }
+      if (e.candidate) socketRef.current.emit("signal", { to: userId, signal: e.candidate });
     };
 
-    peer.ontrack = event => {
-      const remoteStream = event.streams[0];
-      setRemoteUsers(prev => prev.map(u => 
-        u.userId === userId ? { ...u, stream: remoteStream } : u
-      ));
+    peer.ontrack = e => {
+      setRemoteUsers(prev => prev.map(u => u.userId === userId ? { ...u, stream: e.streams[0] } : u));
     };
 
-    // Auto-Restart ICE if connection fails
-    peer.oniceconnectionstatechange = () => {
-      if (peer.iceConnectionState === "failed") {
-        peer.restartIce();
-      }
-    };
-
+    // Trigger for Perfect Negotiation
     peer.onnegotiationneeded = async () => {
       try {
         makingOfferRef.current[userId] = true;
         await peer.setLocalDescription();
         socketRef.current.emit("signal", { to: userId, signal: peer.localDescription });
       } catch (err) {
-        console.error("Negotiation Error:", err);
+        console.error(err);
       } finally {
         makingOfferRef.current[userId] = false;
       }
