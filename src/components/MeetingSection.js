@@ -6,25 +6,23 @@ import SubPrimeVideoCard from "./SubPrimeVideoCard";
 import LinkSharingCard from "./LinkSharingCard";
 import { useSocket } from "../sockets/socket";
 
+// ⚠️ Use these updated servers to bypass firewall blocks
 const ICE_SERVERS = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" },
     { 
       urls: "turn:openrelay.metered.ca:80", 
       username: "openrelayproject", 
       credential: "openrelayproject" 
     },
     { 
-      // Force TCP on 443 - this is the "Firewall Breaker"
+      // This is the most reliable port for different networks
       urls: "turn:openrelay.metered.ca:443?transport=tcp", 
       username: "openrelayproject", 
       credential: "openrelayproject" 
     }
   ],
-  iceCandidatePoolSize: 10,
-  // Force the browser to prioritize Relay candidates if host fails
-  iceTransportPolicy: 'all' 
+  iceCandidatePoolSize: 10
 };
 
 const MeetingSection = () => {
@@ -35,7 +33,7 @@ const MeetingSection = () => {
   const peersRef = useRef({});
   const localStreamRef = useRef(null);
   
-  // Track negotiation state to prevent collisions
+  // Track handshake state for "Perfect Negotiation"
   const makingOfferRef = useRef({}); 
   const ignoreOfferRef = useRef({});
 
@@ -92,12 +90,12 @@ const MeetingSection = () => {
     socket.on("all-users", users => {
       users.forEach(u => {
         if (u.userId === socket.id) return;
-        initiatePeer(u.userId, u.name, true);
+        createPeer(u.userId, u.name);
       });
     });
 
     socket.on("user-joined", u => {
-      initiatePeer(u.userId, u.name, false);
+      createPeer(u.userId, u.name);
     });
 
     socket.on("signal", async ({ from, signal }) => {
@@ -105,65 +103,49 @@ const MeetingSection = () => {
       if (!peer) return;
 
       try {
-        const description = signal.type ? new RTCSessionDescription(signal) : null;
-        const candidate = signal.candidate ? new RTCIceCandidate(signal) : null;
-
-        if (description) {
-          // Perfect Negotiation: Handle Offer/Answer Collisions
-          const readyForOffer = !makingOfferRef.current[from] && 
-                               (peer.signalingState === "stable" || ignoreOfferRef.current[from]);
+        if (signal.type) {
+          // PERFECT NEGOTIATION: Handle collisions
+          const offerCollision = signal.type === "offer" && 
+            (makingOfferRef.current[from] || peer.signalingState !== "stable");
           
-          const offerCollision = description.type === "offer" && !readyForOffer;
-
-          // If current user's socket ID is "greater" than remote, they are POLITE
+          // Use socket.id to decide who "backs down" (Polite Peer pattern)
           const isPolite = socket.id > from;
           ignoreOfferRef.current[from] = !isPolite && offerCollision;
 
           if (ignoreOfferRef.current[from]) return;
 
-          await peer.setRemoteDescription(description);
-          if (description.type === "offer") {
+          await peer.setRemoteDescription(new RTCSessionDescription(signal));
+          if (signal.type === "offer") {
             await peer.setLocalDescription();
             socket.emit("signal", { to: from, signal: peer.localDescription });
           }
-        } else if (candidate) {
-          try {
-            await peer.addIceCandidate(candidate);
-          } catch (err) {
-            if (!ignoreOfferRef.current[from]) throw err;
-          }
+        } else if (signal.candidate) {
+          await peer.addIceCandidate(new RTCIceCandidate(signal));
         }
       } catch (err) {
-        console.error("Signaling Error:", err);
+        console.error("Signal Handling Error:", err);
       }
     });
 
     socket.on("user-left", id => {
       peersRef.current[id]?.close();
       delete peersRef.current[id];
-      delete makingOfferRef.current[id];
-      delete ignoreOfferRef.current[id];
       setRemoteUsers(prev => prev.filter(u => u.userId !== id));
     });
   }
 
-  const initiatePeer = (userId, userName, isNewcomer) => {
+  const createPeer = (userId, userName) => {
     if (peersRef.current[userId]) return;
 
     const peer = new RTCPeerConnection(ICE_SERVERS);
     peersRef.current[userId] = peer;
     
-    // Add to UI
     setRemoteUsers(prev => [...prev, { userId, name: userName, stream: null }]);
 
-    // Add tracks immediately
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => {
         peer.addTrack(track, localStreamRef.current);
       });
-    } else {
-      peer.addTransceiver("video", { direction: "recvonly" });
-      peer.addTransceiver("audio", { direction: "recvonly" });
     }
 
     peer.onicecandidate = e => {
@@ -173,33 +155,30 @@ const MeetingSection = () => {
     };
 
     peer.ontrack = event => {
-      const stream = event.streams[0];
+      const remoteStream = event.streams[0];
       setRemoteUsers(prev => prev.map(u => 
-        u.userId === userId ? { ...u, stream } : u
+        u.userId === userId ? { ...u, stream: remoteStream } : u
       ));
     };
 
-    // Perfect Negotiation Trigger
+    // Auto-Restart ICE if connection fails
+    peer.oniceconnectionstatechange = () => {
+      if (peer.iceConnectionState === "failed") {
+        peer.restartIce();
+      }
+    };
+
     peer.onnegotiationneeded = async () => {
       try {
         makingOfferRef.current[userId] = true;
         await peer.setLocalDescription();
         socketRef.current.emit("signal", { to: userId, signal: peer.localDescription });
       } catch (err) {
-        console.error("Negotiation error:", err);
+        console.error("Negotiation Error:", err);
       } finally {
         makingOfferRef.current[userId] = false;
       }
     };
-
-    peer.oniceconnectionstatechange = () => {
-  console.log(`Connection state with ${userId}: ${peer.iceConnectionState}`);
-  
-  if (peer.iceConnectionState === "failed") {
-    console.warn("Connection failed. Attempting ICE Restart...");
-    peer.restartIce(); // This is a built-in WebRTC command to find new paths
-  }
-};
 
     return peer;
   };
