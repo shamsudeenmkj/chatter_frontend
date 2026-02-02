@@ -6,7 +6,6 @@ import SubPrimeVideoCard from "./SubPrimeVideoCard";
 import LinkSharingCard from "./LinkSharingCard";
 import { useSocket } from "../sockets/socket";
 
-// ⚠️ Final ExpressTURN Configuration
 const ICE_SERVERS = {
   iceServers: [
     { urls: "stun:free.expressturn.com:3478" },
@@ -39,8 +38,7 @@ const MeetingSection = () => {
   const [name, setName] = useState("");
   const [remoteUsers, setRemoteUsers] = useState([]);
   const [mainVideo, setMainVideo] = useState(null);
-  const [isSharing, setIsSharing] = useState(false);
-  const [mutedList, setMutedList] = useState([]);
+  const [isSharing, setIsSharing] = useState(false); // Track sharing state globally
 
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
@@ -59,7 +57,6 @@ const MeetingSection = () => {
         setupAndJoin(stream, userName);
       })
       .catch(() => {
-        // Fallback for users with no camera
         navigator.mediaDevices.getUserMedia({ audio: true })
           .then(audioStream => {
             localStreamRef.current = audioStream;
@@ -130,7 +127,8 @@ const MeetingSection = () => {
     
     setRemoteUsers(prev => [...prev, { userId, name: userName, stream: null }]);
 
-    // --- SYNC NEW JOINERS ---
+    // --- FIX FOR NEW JOINERS ---
+    // Choose only ONE track to send based on current activity
     let videoTrack;
     if (isSharing && screenStreamRef.current) {
         videoTrack = screenStreamRef.current.getVideoTracks()[0];
@@ -141,6 +139,7 @@ const MeetingSection = () => {
     if (videoTrack) {
         peer.addTrack(videoTrack, isSharing ? screenStreamRef.current : localStreamRef.current);
     }
+    
     const audioTrack = localStreamRef.current?.getAudioTracks()[0];
     if (audioTrack) peer.addTrack(audioTrack, localStreamRef.current);
 
@@ -183,7 +182,7 @@ const MeetingSection = () => {
                         socketRef={socketRef}
                         roomId={roomId}
                     />
-                    <SubPrimeVideoCard userList={remoteUsers} mutedList={mutedList} />
+                    <SubPrimeVideoCard userList={remoteUsers} />
                 </div>
                 <div className="col-xl-3">
                     <ChatCard />

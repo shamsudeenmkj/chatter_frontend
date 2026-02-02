@@ -24,14 +24,16 @@ const VideoCard = ({ video, name, peersRef, localStreamRef, screenStreamRef, set
         screenStreamRef.current = screenStream;
         const screenTrack = screenStream.getVideoTracks()[0];
 
-        // Replace track for ALL current peers
+        // 1. Update State first
+        setIsSharing(true);
+
+        // 2. Replace track for everyone already in the call
         Object.values(peersRef.current).forEach(peer => {
           const sender = peer.getSenders().find(s => s.track?.kind === "video");
           if (sender) sender.replaceTrack(screenTrack);
         });
 
         setMainVideo(screenStream);
-        setIsSharing(true);
 
         screenTrack.onended = () => stopScreenShare();
       } catch (err) { console.error("Sharing failed", err); }
@@ -44,6 +46,7 @@ const VideoCard = ({ video, name, peersRef, localStreamRef, screenStreamRef, set
     screenStreamRef.current?.getTracks().forEach(t => t.stop());
     const cameraTrack = localStreamRef.current?.getVideoTracks()[0];
 
+    // If camera exists, swap back. If no camera, they just see the avatar.
     if (cameraTrack) {
         Object.values(peersRef.current).forEach(peer => {
             const sender = peer.getSenders().find(s => s.track?.kind === "video");
@@ -56,30 +59,34 @@ const VideoCard = ({ video, name, peersRef, localStreamRef, screenStreamRef, set
   };
 
   const toggleVideo = () => {
-    if (localStreamRef.current) {
-      localStreamRef.current.getVideoTracks().forEach(track => {
-        track.enabled = !track.enabled;
-        socketRef.current.emit('video-toggle', { roomId, videoOff: !track.enabled });
-      });
-      setCam(prev => !prev);
+    if (localStreamRef.current && localStreamRef.current.getVideoTracks()[0]) {
+      const track = localStreamRef.current.getVideoTracks()[0];
+      track.enabled = !track.enabled;
+      setCam(track.enabled);
+      socketRef.current.emit('video-toggle', { roomId, videoOff: !track.enabled });
     }
   };
 
   const toggleAudio = () => {
-    if (localStreamRef.current) {
-      localStreamRef.current.getAudioTracks().forEach(track => {
-        track.enabled = !track.enabled;
-        socketRef.current.emit('audio-toggle', { roomId, muted: !track.enabled });
-      });
-      setMic(prev => !prev);
+    if (localStreamRef.current && localStreamRef.current.getAudioTracks()[0]) {
+      const track = localStreamRef.current.getAudioTracks()[0];
+      track.enabled = !track.enabled;
+      setMic(track.enabled);
+      socketRef.current.emit('audio-toggle', { roomId, muted: !track.enabled });
     }
   };
 
   return (
     <div className='videoCnt'>
       <div className='hostScreen'>
-        <video ref={videoElementRef} autoPlay muted playsInline className='PrimeVideoDisplay' />
-        <p className='mainStreamerName'>{name} {isSharing ? "(Presenting)" : ""}</p>
+        {video ? (
+            <video ref={videoElementRef} autoPlay muted playsInline className='PrimeVideoDisplay' />
+        ) : (
+            <div className='PrimeVideoDisplay' style={{backgroundColor: '#333', display: 'flex', justifyContent: 'center', alignItems: 'center'}}>
+                <div style={{fontSize: '5rem', color: 'white'}}>{name[0]}</div>
+            </div>
+        )}
+        <p className='mainStreamerName'>{name} {isSharing ? "(Presenting Screen)" : ""}</p>
         <div className='primaryHostIcons'>
           <div className="commonHostIcons" onClick={toggleAudio}>
             <img src={mainMic ? MainMicOn : MainMicOff} alt="Mic" />
