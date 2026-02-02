@@ -6,18 +6,6 @@ import SubPrimeVideoCard from "./SubPrimeVideoCard";
 import LinkSharingCard from "./LinkSharingCard";
 import { useSocket } from "../sockets/socket";
 
-const ICE_SERVERS = {
-  iceServers: [
-    { urls: "stun:stun.l.google.com:19302" },
-    { 
-      urls: "turn:openrelay.metered.ca:443?transport=tcp", 
-      username: "openrelayproject", 
-      credential: "openrelayproject" 
-    }
-  ],
-  iceCandidatePoolSize: 10
-};
-
 const MeetingSection = () => {
   const { roomId } = useParams();
   const navigate = useNavigate();
@@ -25,8 +13,9 @@ const MeetingSection = () => {
 
   const peersRef = useRef({});
   const localStreamRef = useRef(null);
+  const iceServersRef = useRef([]);
   
-  // Handshake synchronization refs
+  // Handshake synchronization for Perfect Negotiation
   const makingOfferRef = useRef({});
   const ignoreOfferRef = useRef({});
 
@@ -35,23 +24,48 @@ const MeetingSection = () => {
   const [mainVideo, setMainVideo] = useState(null);
   const [mutedList, setMutedList] = useState([]);
 
-  useEffect(() => {
-    const storedUser = localStorage.getItem("user");
-    if (!storedUser) {
-      navigate(`/login/${roomId}`);
-      return;
+  // 1. Fetch Private TURN Credentials from Metered.ca
+  const fetchIceServers = async () => {
+    try {
+      // Replace <appname> with 'cmotsmeet' and add your API Key from dashboard
+      const response =
+
+        await fetch("https://cmotsmeet.metered.live/api/v1/turn/credentials?apiKey=a98fd8cb9a1137effa4cebb94dd5d861bd21");
+
+      const data = await response.json();
+      console.log("✅ TURN Servers Loaded:", data);
+      return data;
+    } catch (error) {
+      console.error("❌ Failed to fetch TURN credentials:", error);
+      // Fallback to basic STUN
+      return [{ urls: "stun:stun.l.google.com:19302" }];
     }
-    const userName = JSON.parse(storedUser).name;
-    setName(userName);
+  };
 
-    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-      .then(stream => {
-        localStreamRef.current = stream;
-        setMainVideo(stream);
-        setupAndJoin(stream, userName);
-      })
-      .catch(() => setupAndJoin(null, userName));
+  useEffect(() => {
+    const startMeeting = async () => {
+      const storedUser = localStorage.getItem("user");
+      if (!storedUser) {
+        navigate(`/login/${roomId}`);
+        return;
+      }
+      const userName = JSON.parse(storedUser).name;
+      setName(userName);
 
+      // Fetch regional ICE servers before joining
+      const servers = await fetchIceServers();
+      iceServersRef.current = servers;
+
+      navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+        .then(stream => {
+          localStreamRef.current = stream;
+          setMainVideo(stream);
+          setupAndJoin(stream, userName);
+        })
+        .catch(() => setupAndJoin(null, userName));
+    };
+
+    startMeeting();
     return cleanup;
   }, []);
 
@@ -65,6 +79,7 @@ const MeetingSection = () => {
     }
     Object.values(peersRef.current).forEach(peer => peer.close());
     peersRef.current = {};
+    localStreamRef.current?.getTracks().forEach(t => t.stop());
   }
 
   function setupAndJoin(stream, userName) {
@@ -85,11 +100,10 @@ const MeetingSection = () => {
 
       try {
         if (signal.type) {
-          // PERFECT NEGOTIATION LOGIC
+          // PERFECT NEGOTIATION: Handle collisions for the 5-device setup
           const offerCollision = signal.type === "offer" && 
             (makingOfferRef.current[from] || peer.signalingState !== "stable");
           
-          // Polite peer backs down on collision (based on socket ID)
           const isPolite = socket.id > from;
           ignoreOfferRef.current[from] = !isPolite && offerCollision;
 
@@ -121,9 +135,13 @@ const MeetingSection = () => {
 
   const createPeer = (userId, userName) => {
     if (peersRef.current[userId]) return;
-    const peer = new RTCPeerConnection(ICE_SERVERS);
-    peersRef.current[userId] = peer;
+
+    const peer = new RTCPeerConnection({ 
+        iceServers: iceServersRef.current,
+        iceCandidatePoolSize: 10
+    });
     
+    peersRef.current[userId] = peer;
     setRemoteUsers(prev => [...prev, { userId, name: userName, stream: null }]);
 
     if (localStreamRef.current) {
@@ -138,14 +156,18 @@ const MeetingSection = () => {
       setRemoteUsers(prev => prev.map(u => u.userId === userId ? { ...u, stream: e.streams[0] } : u));
     };
 
-    // Trigger for Perfect Negotiation
+    // Auto-Restart connection if network drops
+    peer.oniceconnectionstatechange = () => {
+      if (peer.iceConnectionState === "failed") peer.restartIce();
+    };
+
     peer.onnegotiationneeded = async () => {
       try {
         makingOfferRef.current[userId] = true;
         await peer.setLocalDescription();
         socketRef.current.emit("signal", { to: userId, signal: peer.localDescription });
       } catch (err) {
-        console.error(err);
+        console.error("Negotiation Error:", err);
       } finally {
         makingOfferRef.current[userId] = false;
       }
