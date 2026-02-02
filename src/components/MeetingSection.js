@@ -48,6 +48,8 @@ const MeetingSection = () => {
   const [mainVideo, setMainVideo] = useState(null);
   const [mutedList, setMutedList] = useState([]);
 
+  
+
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
     if (!storedUser) {
@@ -190,8 +192,15 @@ const MeetingSection = () => {
       <div className="container">
         <div className="row">
           <div className="col-xl-9">
-            <VideoCard video={mainVideo} name={name} roomId={roomId} socketRef={socketRef} />
-            <SubPrimeVideoCard userList={remoteUsers} mutedList={mutedList} />
+<VideoCard 
+  video={mainVideo} 
+  name={name} 
+  roomId={roomId} 
+  socketRef={socketRef}
+  peersRef={peersRef}           // Added this
+  localStreamRef={localStreamRef} // Added this
+  setMainVideo={setMainVideo}     // Added this
+/>            <SubPrimeVideoCard userList={remoteUsers} mutedList={mutedList} />
           </div>
           <div className="col-xl-3">
             <ChatCard />
