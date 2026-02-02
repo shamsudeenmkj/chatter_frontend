@@ -13,13 +13,13 @@ const ICE_SERVERS = {
     { urls: "stun:relay.expressturn.com:3478" },
     { 
       urls: "turn:relay.expressturn.com:3478?transport=udp", 
-      username: "YOUR_EXPRESSTURN_USERNAME", 
-      credential: "YOUR_EXPRESSTURN_PASSWORD" 
+      username: "000000002085384559", 
+      credential: "oQIy00pPRpYEeWLCpFbtjbNntj4=" 
     },
     { 
       urls: "turn:relay.expressturn.com:443?transport=tcp", 
-      username: "YOUR_EXPRESSTURN_USERNAME", 
-      credential: "YOUR_EXPRESSTURN_PASSWORD" 
+      username: "000000002085384559", 
+      credential: "oQIy00pPRpYEeWLCpFbtjbNntj4=" 
     }
   ],
   iceCandidatePoolSize: 10
