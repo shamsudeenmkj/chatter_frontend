@@ -39,7 +39,7 @@ const MeetingSection = () => {
   const [remoteUsers, setRemoteUsers] = useState([]);
   const [mainVideo, setMainVideo] = useState(null);
   const [isSharing, setIsSharing] = useState(false); // Track sharing state globally
-
+const [mutedList, setMutedList] = useState([])
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
     if (!storedUser) {
@@ -182,8 +182,7 @@ const MeetingSection = () => {
                         socketRef={socketRef}
                         roomId={roomId}
                     />
-                    <SubPrimeVideoCard userList={remoteUsers} />
-                </div>
+<SubPrimeVideoCard userList={remoteUsers} mutedList={mutedList} />                </div>
                 <div className="col-xl-3">
                     <ChatCard />
                     <LinkSharingCard />
