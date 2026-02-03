@@ -90,7 +90,7 @@ const MeetingSection = () => {
     socket.on("all-users", users => {
       users.forEach(u => u.userId !== socket.id && createPeer(u.userId, u.name));
     });
-    socket.on("user-joined", u => createPeer(u.userId,u.name));
+    socket.on("user-joined", u => createPeer(u.userId, u.name));
 
     socket.on("signal", async ({ from, signal }) => {
       const peer = peersRef.current[from];
