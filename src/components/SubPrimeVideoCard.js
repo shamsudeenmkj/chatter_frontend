@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react'
 import SubPrimeMicOn from '../assets/subPrimeMic.png';
 import SubPrimeMicOff from '../assets/subPrimeMicOff.png';
 
-const SubPrimeVideoCard = ({ userList, mutedList }) => {
+const SubPrimeVideoCard = ({ userList }) => {
   return (
     <div className="subPrimeVideoCardCnt">
       {userList.map(({ userId, name, stream }) => (
@@ -11,7 +11,6 @@ const SubPrimeVideoCard = ({ userList, mutedList }) => {
           userId={userId}
           name={name}
           stream={stream}
-          muted={mutedList.includes(userId)}
         />
       ))}
     </div>
