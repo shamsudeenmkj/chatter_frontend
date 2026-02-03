@@ -134,24 +134,21 @@ function createPeer(userId, userName) {
   const peer = new RTCPeerConnection(ICE_SERVERS);
   peersRef.current[userId] = peer;
 
-  setRemoteUsers(prev =>
-    prev.find(u => u.userId === userId)
-      ? prev
-      : [...prev, { userId, name: userName, stream: null }]
-  );
+  setRemoteUsers(prev => {
+    if (prev.find(u => u.userId === userId)) return prev;
+    return [...prev, { userId, name: userName, stream: null }];
+  });
 
-  // ✅ Always use currently active stream
-  const activeStream = screenStreamRef.current || localStreamRef.current;
-
-  const videoTrack = activeStream?.getVideoTracks()?.[0];
-  const audioTrack = localStreamRef.current?.getAudioTracks()?.[0];
-
-  if (videoTrack) {
-    peer.addTrack(videoTrack, activeStream);
-  }
-
+  // Add audio
+  const audioTrack = localStreamRef.current?.getAudioTracks()[0];
   if (audioTrack) {
     peer.addTrack(audioTrack, localStreamRef.current);
+  }
+
+  // Add video (camera initially)
+  const camTrack = localStreamRef.current?.getVideoTracks()[0];
+  if (camTrack) {
+    peer.addTrack(camTrack, localStreamRef.current);
   }
 
   peer.onicecandidate = e => {
@@ -161,6 +158,7 @@ function createPeer(userId, userName) {
   };
 
   peer.ontrack = e => {
+    console.log("REMOTE STREAM RECEIVED");
     setRemoteUsers(prev =>
       prev.map(u =>
         u.userId === userId ? { ...u, stream: e.streams[0] } : u
@@ -178,18 +176,20 @@ function createPeer(userId, userName) {
     }
   };
 
-  // ✅ IMPORTANT FIX — Force screen track replace if sharing is active
-  if (screenStreamRef.current) {
-    const screenTrack = screenStreamRef.current.getVideoTracks()[0];
-
-    setTimeout(() => {
+  // ✅ FORCE SCREEN TRACK IF SHARING IS ACTIVE
+  setTimeout(() => {
+    if (screenStreamRef.current) {
+      const screenTrack = screenStreamRef.current.getVideoTracks()[0];
       const sender = peer.getSenders().find(s => s.track?.kind === "video");
+
       if (sender && screenTrack) {
+        console.log("FORCING SCREEN TRACK TO NEW USER");
         sender.replaceTrack(screenTrack);
       }
-    }, 300);
-  }
+    }
+  }, 500);
 }
+
 
 
   return (
