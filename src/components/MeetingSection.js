@@ -128,45 +128,69 @@ const MeetingSection = () => {
     });
   }
 
-  function createPeer(userId, userName) {
-    if (peersRef.current[userId]) return;
+function createPeer(userId, userName) {
+  if (peersRef.current[userId]) return;
 
-    const peer = new RTCPeerConnection(ICE_SERVERS);
-    peersRef.current[userId] = peer;
+  const peer = new RTCPeerConnection(ICE_SERVERS);
+  peersRef.current[userId] = peer;
 
-    setRemoteUsers(prev =>
-      prev.find(u => u.userId === userId)
-        ? prev
-        : [...prev, { userId, name: userName, stream: null }]
-    );
+  setRemoteUsers(prev =>
+    prev.find(u => u.userId === userId)
+      ? prev
+      : [...prev, { userId, name: userName, stream: null }]
+  );
 
-    const activeStream = screenStreamRef.current || localStreamRef.current;
-    const videoTrack = activeStream?.getVideoTracks()[0];
-    const audioTrack = localStreamRef.current?.getAudioTracks()[0];
+  // ✅ Always use currently active stream
+  const activeStream = screenStreamRef.current || localStreamRef.current;
 
-    if (videoTrack) peer.addTrack(videoTrack, activeStream);
-    if (audioTrack) peer.addTrack(audioTrack, localStreamRef.current);
+  const videoTrack = activeStream?.getVideoTracks()?.[0];
+  const audioTrack = localStreamRef.current?.getAudioTracks()?.[0];
 
-    peer.onicecandidate = e => {
-      if (e.candidate) socketRef.current.emit("signal", { to: userId, signal: e.candidate });
-    };
-
-    peer.ontrack = e => {
-      setRemoteUsers(prev =>
-        prev.map(u => u.userId === userId ? { ...u, stream: e.streams[0] } : u)
-      );
-    };
-
-    peer.onnegotiationneeded = async () => {
-      try {
-        makingOfferRef.current[userId] = true;
-        await peer.setLocalDescription(await peer.createOffer());
-        socketRef.current.emit("signal", { to: userId, signal: peer.localDescription });
-      } finally {
-        makingOfferRef.current[userId] = false;
-      }
-    };
+  if (videoTrack) {
+    peer.addTrack(videoTrack, activeStream);
   }
+
+  if (audioTrack) {
+    peer.addTrack(audioTrack, localStreamRef.current);
+  }
+
+  peer.onicecandidate = e => {
+    if (e.candidate) {
+      socketRef.current.emit("signal", { to: userId, signal: e.candidate });
+    }
+  };
+
+  peer.ontrack = e => {
+    setRemoteUsers(prev =>
+      prev.map(u =>
+        u.userId === userId ? { ...u, stream: e.streams[0] } : u
+      )
+    );
+  };
+
+  peer.onnegotiationneeded = async () => {
+    try {
+      makingOfferRef.current[userId] = true;
+      await peer.setLocalDescription(await peer.createOffer());
+      socketRef.current.emit("signal", { to: userId, signal: peer.localDescription });
+    } finally {
+      makingOfferRef.current[userId] = false;
+    }
+  };
+
+  // ✅ IMPORTANT FIX — Force screen track replace if sharing is active
+  if (screenStreamRef.current) {
+    const screenTrack = screenStreamRef.current.getVideoTracks()[0];
+
+    setTimeout(() => {
+      const sender = peer.getSenders().find(s => s.track?.kind === "video");
+      if (sender && screenTrack) {
+        sender.replaceTrack(screenTrack);
+      }
+    }, 300);
+  }
+}
+
 
   return (
     <section className="meetingSc">

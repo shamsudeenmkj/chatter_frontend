@@ -41,9 +41,15 @@ const VideoCard = ({
       setMainVideo(screenStream);
 
       Object.values(peersRef.current).forEach(peer => {
-        const sender = peer.getSenders().find(s => s.track?.kind === "video");
-        if (sender) sender.replaceTrack(screenTrack);
-      });
+  const sender = peer.getSenders().find(s => s.track?.kind === "video");
+
+  if (sender && screenTrack) {
+    sender.replaceTrack(screenTrack);
+  } else {
+    peer.addTrack(screenTrack, screenStreamRef.current);
+  }
+});
+
 
       screenTrack.onended = stopScreenShare;
 
