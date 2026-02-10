@@ -7,42 +7,27 @@ import Login from './login/Login';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import ReJoinRoom from './login/reJoinRoom';
 
-
-
 const App = () => {
-  const [user, setUser] = useState(null); // {name, roomId}
+  const [user, setUser] = useState(null);
 
   const handleJoin = (name, roomId) => {
     setUser({ name, roomId });
-
-
   };
 
   return (
-     <SocketProvider>
-     
-    <div style={{ height: '100vh', background: '#1e1e1e', color: 'white' }}>
-      <BrowserRouter>
-        <Routes>
-          {/* Login Page */}
-          <Route path="/" element={<Login onJoin={handleJoin} />} />
-
-          {/* Create Room Page */}
-          <Route path="/create-room" element={<CreateRoom />} />
-
-          {/* Room Page (dynamic route) */}
-          <Route path="/room/:roomId" element={<MeetingSection/>} />
-                    <Route path="/login/:getRoomId" element={<ReJoinRoom/>} />
-
-        </Routes>
-      </BrowserRouter>
-    </div>
+    <SocketProvider>
+      <div className="appRoot">
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<Login onJoin={handleJoin} />} />
+            <Route path="/create-room" element={<CreateRoom />} />
+            <Route path="/room/:roomId" element={<MeetingSection />} />
+            <Route path="/login/:getRoomId" element={<ReJoinRoom />} />
+          </Routes>
+        </BrowserRouter>
+      </div>
     </SocketProvider>
   );
 };
 
-
-
-
-
-export default App
+export default App;

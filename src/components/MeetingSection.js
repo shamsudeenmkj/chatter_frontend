@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import VideoCard from "./videoCard";
 import ChatCard from "./ChatCard";
+import Participants from "./Participants";
+import NavigationControl from "./NavigationControl";
 import SubPrimeVideoCard from "./SubPrimeVideoCard";
 import LinkSharingCard from "./LinkSharingCard";
 import { useSocket } from "../sockets/socket";
@@ -201,14 +203,9 @@ function createPeer(userId, userName) {
             <VideoCard
               video={mainVideo}
               name={name}
-              peersRef={peersRef}
-              localStreamRef={localStreamRef}
-              screenStreamRef={screenStreamRef}
-              setMainVideo={setMainVideo}
+            
               isSharing={isSharing}
-              setIsSharing={setIsSharing}
-              socketRef={socketRef}
-              roomId={roomId}
+            
             />
 
             <SubPrimeVideoCard userList={remoteUsers} />
@@ -219,6 +216,25 @@ function createPeer(userId, userName) {
             <LinkSharingCard />
           </div>
 
+        </div>
+
+                <div className="row">
+          <div className="col-lg-12">
+            <div className="bottomControllers">
+              <Participants/>
+              <NavigationControl    
+           
+              peersRef={peersRef}
+              localStreamRef={localStreamRef}
+              screenStreamRef={screenStreamRef}
+              setMainVideo={setMainVideo}
+              isSharing={isSharing}
+              setIsSharing={setIsSharing}
+              socketRef={socketRef}
+              roomId={roomId}/>
+              <LinkSharingCard /> 
+            </div>
+          </div>
         </div>
       </div>
     </section>
