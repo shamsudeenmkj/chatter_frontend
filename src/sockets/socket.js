@@ -3,8 +3,8 @@ import React, { createContext, useContext, useRef, useEffect } from "react";
 import io from "socket.io-client";
 
 const SocketContext = createContext(null);
-// const SIGNALING_SERVER = "https://chatter-backend-4i7g.onrender.com";
-const SIGNALING_SERVER = 'http://localhost:8000/';
+const SIGNALING_SERVER = "https://chatter-backend-4i7g.onrender.com";
+// const SIGNALING_SERVER = 'http://localhost:8000/';
 
 
 export const SocketProvider = ({ children }) => {
