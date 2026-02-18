@@ -58,6 +58,8 @@ const MeetingSection = () => {
       .then(stream => {
         localStreamRef.current = stream;
         setMainVideo(stream);
+         socketRef.current?.emit("audio-toggle", { roomId, muted: false });
+    socketRef.current?.emit("video-toggle", { roomId, videoOff: false });
         setupAndJoin(userName,false);
       })
       .catch(async () => {
