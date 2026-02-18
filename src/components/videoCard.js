@@ -1,10 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import MainMicOn from "../assets/micOpenIcon.svg";
-import MainMicOff from "../assets/micCloseIcon.svg";
-import MainCamOn from "../assets/videoOpenIcon.svg";
-import MainCamOff from "../assets/videoCloseIcon.svg";
-import screenShare from "../assets/screenShareIcon.svg";
-import endVideo from "../assets/meetCloseIcon.svg";
+
 
 const VideoCard = ({
   video,

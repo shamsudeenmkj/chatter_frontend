@@ -14,7 +14,7 @@ import UserMoreIcon from "../assets/userMoreIcon.png";
 
 import PollImage from "../assets/pollImage.png";
 
-const ChatCard = () => {
+const ChatCard = ({userList,onToggleChat}) => {
   const socketRef = useSocket();
   const { roomId } = useParams();
   const user = JSON.parse(localStorage.getItem("user"));
@@ -37,10 +37,11 @@ const ChatCard = () => {
 
   // ================== SOCKET LISTENERS ==================
   useEffect(() => {
+    setParticipants(userList)
     const socket = socketRef.current;
     if (!socket || !user) return;
 
-    socket.emit("join-room", { roomId, name: user.name });
+    // socket.emit("join-room", { roomId, name: user.name });
 
     socket.on("all-users", (users) => setParticipants(users));
     socket.on("user-joined", (newUser) => setParticipants((prev) => [...prev, newUser]));
@@ -137,11 +138,16 @@ const ChatCard = () => {
     <div className="chatPollWholeCnt">
       <div className="tabsChatPollCnt">
         <Tabs>
+          <div style={{display:"flex",justifyContent:"space-between"}}>
+
           <TabList>
             <Tab>Participants</Tab>
             <Tab>Chats</Tab>
             <Tab>Poll</Tab>
           </TabList>
+            <button onClick={onToggleChat} style={{color:"white",background:"transparent",height:"30px",width:"30px"}}>X</button>
+
+          </div>
 
           {/* PARTICIPANTS TAB */}
           <TabPanel>
@@ -206,10 +212,12 @@ const ChatCard = () => {
                 return (
                   <div className="participantsChatCnt" key={i} style={{ justifyContent: mine ? "flex-end" : "flex-start" }}>
                     <div className="chatProfile"><div>{msg.sender?.[0]}</div></div>
-                    <div className="indProfileChat">
-                      <p className="timer">{msg.time}</p>
+                    <div className="indProfileChat">                      
                       <div className="userCnt">
-                        <p className="userName">{msg.sender}</p>
+                        <div className="timeCnt">
+                          <p className="userName">{msg.sender}</p>
+                          <p className="timer">{msg.time}</p>
+                        </div>                        
                         <p>{msg.text}</p>
                       </div>
                     </div>

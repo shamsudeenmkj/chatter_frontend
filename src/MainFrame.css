@@ -1,0 +1,133 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap');
+
+*{
+    padding: 0;
+    margin: 0;
+    box-sizing: border-box;
+    font-family: "Montserrat", sans-serif;
+}
+.mainFrameSc .heroTitle h2{
+    font-size: 52px;
+    color: #000000;
+    line-height: 150%;
+    font-weight: 700;
+    margin-bottom: 18px;
+}
+.mainFrameSc .heroTitle h2 span{
+    color: #8D8F98;
+}
+.mainFrameSc{
+    margin-top: 80px;
+}
+.mainFrameSc .heroTitle p{
+    font-size: 18px;
+    color: #6A6A6A;
+    line-height: 150%;
+    font-weight: 500;
+    margin-bottom: 34px;
+}
+.joinMBtn{
+    background-color: #004ECC;
+    color: #ffffff;
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 700;
+    border: none;
+}
+.createmBtn{
+    border: 1px solid #004ECC;
+    background-color: transparent;
+    color: #004ECC;
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 700;
+}
+.createmBtn:hover{
+    background-color: #004ECC;
+    color: #ffffff;
+}
+.mainFrameSc .joinAndCreateBtn{
+    display: flex;
+    align-items: center;
+    gap: 18px;
+}
+.secondaryLogoSc{
+    padding-top: 20px;
+    padding-bottom: 30px;
+}
+.landingAddBannerSc{
+    margin-top: 25px;
+    margin-bottom: 50px;
+}
+
+@media (min-width: 1400px) {
+
+}
+@media (min-width: 1200px) and (max-width: 1399.9px){
+
+}
+@media (min-width: 992px) and (max-width: 1199.9px){
+    .mainFrameSc {
+        margin-top: 50px;
+    }
+    .mainFrameSc .heroTitle h2{
+        font-size: 42px;
+    }
+    .secondaryLogoSc {
+        padding-top: 30px;
+        padding-bottom: 30px;
+    }
+}
+@media (min-width: 768px) and (max-width: 991.9px){
+    .mainFrameSc {
+        margin-top: 50px;
+    }
+    .mainFrameSc .heroTitle h2{
+        font-size: 32px;
+        line-height: 140%;
+        margin-bottom: 8px;
+    }
+    .mainFrameSc .heroTitle p{
+        font-size: 16px;
+        margin-bottom: 24px;
+    }
+    .secondaryLogoSc {
+        padding-top: 30px;
+        padding-bottom: 20px;
+    }    
+}
+@media (min-width: 576px) and (max-width: 767.9px){
+    .mainFrameSc .heroTitle h2{
+        font-size: 38px;
+    }
+    .mainFrameSc {
+        margin-top: 50px;
+    }
+    .mainFrameSc .row{
+        gap: 34px;
+    }
+    .secondaryLogoSc {
+        padding-top: 30px;
+        padding-bottom: 20px;
+    }
+}
+@media (max-width: 575.9px){
+    .mainFrameSc .heroTitle h2{
+        font-size: 28px;
+    }
+    .mainFrameSc {
+        margin-top: 34px;
+    }
+    .mainFrameSc .row{
+        gap: 34px;
+    }
+    .secondaryLogoSc {
+        padding-top: 30px;
+        padding-bottom: 20px;
+    }
+    .meetingCodeFinder{
+        display: none;
+    }
+}

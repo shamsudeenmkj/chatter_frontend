@@ -1,0 +1,69 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap');
+
+*{
+    padding: 0;
+    margin: 0;
+    box-sizing: border-box;
+    font-family: "Montserrat", sans-serif;
+}
+.headerSc .headerMainCnt{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 20px;
+    padding-bottom: 20px;
+}
+.signInBtn{
+    background-color: #004ECC !important;
+    color: #ffffff !important;
+    padding: 8px 10px !important;
+    border-radius: 8px !important;
+    font-size: 16px !important;
+    font-weight: 700 !important;
+    border: none !important;
+    outline: none !important;
+}
+.headerSc .searchLoginCnt{
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+.headerSc .headerMainCnt{
+    border-bottom: 1px solid #D8D8D8;
+}
+.container-fluid{
+    padding-right: 30px !important;
+    padding-left: 30px !important;
+}
+.meetingCodeFinder{
+    border: 1px solid #D1D1D1;
+    border-radius: 8px;
+    padding: 9px 16px;
+}
+.meetingCodeFinder input::placeholder{
+    font-size: 14px;
+    color: #D1D1D1;
+}
+.meetingCodeFinder input{
+    border: none;
+    outline: none;
+}
+.meetingCodeFinder button{
+    border: none;
+    background-color: transparent;
+}
+@media (min-width: 576px) and (max-width: 767.9px){
+    .headerSc .searchLoginCnt{
+        gap: 12px;
+    }
+    .container-fluid {
+        padding-right: 12px !important;
+        padding-left: 12px !important;
+    }
+}
+@media (max-width: 575.9px){
+    .container-fluid {
+        padding-right: 12px !important;
+        padding-left: 12px !important;
+    }
+}

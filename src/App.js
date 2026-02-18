@@ -6,6 +6,8 @@ import CreateRoom from './login/CreateRoom';
 import Login from './login/Login';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import ReJoinRoom from './login/reJoinRoom';
+import LandingPage from './components/LandingPage';
+import LoginSideBar from './components/LoginSideBar';
 
 const App = () => {
   const [user, setUser] = useState(null);
@@ -19,10 +21,12 @@ const App = () => {
       <div className="appRoot">
         <BrowserRouter>
           <Routes>
-            <Route path="/" element={<Login onJoin={handleJoin} />} />
+            <Route path="/" element={<LandingPage/>} />
+            {/* <Route path="/" element={<Login onJoin={handleJoin} />} /> */}
             <Route path="/create-room" element={<CreateRoom />} />
             <Route path="/room/:roomId" element={<MeetingSection />} />
             <Route path="/login/:getRoomId" element={<ReJoinRoom />} />
+           <Route path='/guest-login' element={<Login onJoin={handleJoin}/>}/>
           </Routes>
         </BrowserRouter>
       </div>

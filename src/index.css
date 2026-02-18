@@ -1,4 +1,8 @@
 /* Container styling */
+
+::-webkit-scrollbar{
+  display: none;
+}
 .create-room-container {
   display: flex;
   justify-content: center;

@@ -26,6 +26,11 @@ const ICE_SERVERS = {
 };
 
 const MeetingSection = () => {
+
+  const [activePanel, setActivePanel] = useState(null);
+
+
+
   const { roomId } = useParams();
   const navigate = useNavigate();
   const socketRef = useSocket();
@@ -53,15 +58,21 @@ const MeetingSection = () => {
       .then(stream => {
         localStreamRef.current = stream;
         setMainVideo(stream);
-        setupAndJoin(userName);
+        setupAndJoin(userName,false);
       })
       .catch(async () => {
         try {
           const audioOnly = await navigator.mediaDevices.getUserMedia({ audio: true });
           localStreamRef.current = audioOnly;
-          setupAndJoin(userName);
+                        socketRef.current?.emit("audio-toggle", { roomId, muted: false });
+    socketRef.current?.emit("video-toggle", { roomId, videoOff: true });
+
+          setupAndJoin(userName,false);
         } catch {
-          setupAndJoin(userName);
+              socketRef.current?.emit("audio-toggle", { roomId, muted: true });
+    socketRef.current?.emit("video-toggle", { roomId, videoOff:true});
+
+          setupAndJoin(userName,true);
         }
       });
 
@@ -82,17 +93,17 @@ const MeetingSection = () => {
     screenStreamRef.current?.getTracks().forEach(t => t.stop());
   }
 
-  function setupAndJoin(userName) {
+  function setupAndJoin(userName,micMuted) {
     const socket = socketRef.current;
     if (!socket) return;
 
     socket.emit("join-room", { roomId, name: userName });
 
     socket.on("all-users", users => {
-      users.forEach(u => u.userId !== socket.id && createPeer(u.userId, u.name));
+      users.forEach(u => u.userId !== socket.id && createPeer(u.userId, u.name,micMuted));
     });
 
-    socket.on("user-joined", u => createPeer(u.userId, u.name));
+    socket.on("user-joined", u => createPeer(u.userId, u.name,micMuted));
 
     socket.on("signal", async ({ from, signal }) => {
       const peer = peersRef.current[from];
@@ -123,6 +134,19 @@ const MeetingSection = () => {
       }
     });
 
+
+    socket.on("audio-toggle", ({ userId, muted }) => {
+          console.log("audio-toggle==>",muted)
+
+  setRemoteUsers(prev =>
+    prev.map(user =>
+      user.userId === userId
+        ? { ...user, muted }
+        : user
+    )
+  );
+});
+
     socket.on("user-left", id => {
       peersRef.current[id]?.close();
       delete peersRef.current[id];
@@ -130,7 +154,7 @@ const MeetingSection = () => {
     });
   }
 
-function createPeer(userId, userName) {
+function createPeer(userId, userName,micMuted) {
   if (peersRef.current[userId]) return;
 
   const peer = new RTCPeerConnection(ICE_SERVERS);
@@ -138,7 +162,7 @@ function createPeer(userId, userName) {
 
   setRemoteUsers(prev => {
     if (prev.find(u => u.userId === userId)) return prev;
-    return [...prev, { userId, name: userName, stream: null }];
+    return [...prev, { userId, name: userName, stream: null ,muted:micMuted}];
   });
 
   // Add audio
@@ -194,33 +218,57 @@ function createPeer(userId, userName) {
 
 
 
+
   return (
     <section className="meetingSc">
       <div className="container">
         <div className="row">
 
-          <div className="col-xl-9">
-            <VideoCard
+          {/* <div className="col-lg-8 col-xl-8 col-xxl-9"> */}
+            {/* <VideoCard
               video={mainVideo}
               name={name}
             
               isSharing={isSharing}
             
-            />
+            /> */}
+{/* <div> */}
+            {/* <SubPrimeVideoCard userList={[ { userId:socketRef.current?.id,
+          name,
+          stream:mainVideo,
+          muted:true},...remoteUsers]} /> */}
 
-            <SubPrimeVideoCard userList={remoteUsers} />
+          <div className={activePanel ? "col-lg-8 col-xl-8 col-xxl-9" : "col-12"}
+  style={{ transition: "all 0.35s ease", height: "calc(100vh - 130px)" }}>
+  <SubPrimeVideoCard
+    userList={[
+      { userId: socketRef.current?.id, name, stream: mainVideo, muted: true },
+      ...remoteUsers
+    ]}
+    activePanel={activePanel}  
+  />
+{/* </div> */}
           </div>
-
-          <div className="col-xl-3">
+{/* 
+          <div className="col-lg-4 col-xl-4 col-xxl-3">
             <ChatCard />
-            <LinkSharingCard />
-          </div>
+       
+          </div> */}
 
+
+{activePanel && (
+  <div className="col-lg-4 col-xl-4 col-xxl-3"
+    style={{ height: "calc(100vh - 130px)", animation: "slideInRight 0.35s ease" }}>
+    {activePanel === "chat" && <ChatCard userList={remoteUsers}   onToggleChat={() => setActivePanel(p => p === "chat" ? null : "chat")}
+/>}
+    {activePanel === "participants" && <Participants />}
+  </div>
+)}
         </div>
 
-                <div className="row">
-          <div className="col-lg-12">
-            <div className="bottomControllers">
+        <div className="row">
+            <div className="col-lg-12">
+              <div className="bottomControllers">
               <Participants/>
               <NavigationControl    
            
@@ -231,10 +279,17 @@ function createPeer(userId, userName) {
               isSharing={isSharing}
               setIsSharing={setIsSharing}
               socketRef={socketRef}
-              roomId={roomId}/>
+              roomId={roomId}
+
+              activePanel={activePanel}
+  onToggleChat={() => setActivePanel(p => p === "chat" ? null : "chat")}
+  onToggleParticipants={() => setActivePanel(p => p === "participants" ? null : "participants")}
+
+              
+              />
               <LinkSharingCard /> 
+              </div>
             </div>
-          </div>
         </div>
       </div>
     </section>
