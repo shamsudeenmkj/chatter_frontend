@@ -321,7 +321,7 @@ function GalleryLayout({ users, activeSpeakerId, onPin,hostId}) {
     >
       {users.map(u => (
         <VideoTile
-          key={u.name} user={u}
+          key={u.userId} user={u}
           isActive={activeSpeakerId === u.userId}
           onClick={() => onPin(u)}
           hostId={hostId}
