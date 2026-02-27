@@ -367,8 +367,7 @@ function StageLayout({ mainUser, others, activeSpeakerId, onPin, onUnpin, isScre
                 user={u} compact
                 isActive={activeSpeakerId === u.userId}
                 onClick={() => onPin(u)}
-                hostId
-              />
+ hostId={hostId}              />
             </div>
           ))}
         </div>

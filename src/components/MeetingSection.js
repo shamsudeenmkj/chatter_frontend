@@ -26,6 +26,8 @@ const ICE_SERVERS = {
 };
 const MeetingSection = () => {
   const [isMicMuted, setIsMicMuted] = useState(false);
+    const [isCamMuted, setIsCamMuted] = useState(false);
+
 
   const [activePanel, setActivePanel] = useState(null);
 
@@ -63,6 +65,7 @@ const [hostId, setHostId] = useState(null);
          socketRef.current?.emit("audio-toggle", { roomId, muted: false });
     socketRef.current?.emit("video-toggle", { roomId, videoOff: false });
     setIsMicMuted(false)
+    setIsCamMuted(false)
         setupAndJoin(userName,false);
       })
       .catch(async () => {
@@ -73,6 +76,7 @@ const [hostId, setHostId] = useState(null);
                         socketRef.current?.emit("audio-toggle", { roomId, muted: false });
     socketRef.current?.emit("video-toggle", { roomId, videoOff: true });
     setIsMicMuted(false)
+    setIsCamMuted(false)
 
           setupAndJoin(userName,false);
         } catch {
@@ -80,6 +84,7 @@ const [hostId, setHostId] = useState(null);
               socketRef.current?.emit("audio-toggle", { roomId, muted: true });
     socketRef.current?.emit("video-toggle", { roomId, videoOff:true});
     setIsMicMuted(true)
+    setIsCamMuted(true)
 
           setupAndJoin(userName,true);
         }
@@ -292,6 +297,10 @@ if (screenStreamRef.current) {
   // }, 500);
 }
 
+function toggleMic(mic){
+  setIsMicMuted(mic);
+}
+
 
 
 
@@ -350,7 +359,11 @@ if (screenStreamRef.current) {
               <div className="bottomControllers">
               <Participants/>
               <NavigationControl
-           
+              
+isMicMuted={isMicMuted}
+isCamMuted={isCamMuted}
+
+           toggleMic={toggleMic}
               peersRef={peersRef}
               localStreamRef={localStreamRef}
               screenStreamRef={screenStreamRef}

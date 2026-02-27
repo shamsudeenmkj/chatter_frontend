@@ -21,13 +21,13 @@ import MainCamOff from "../assets/videoCloseIcon.svg";
 
 
 
-const NavigationControl = ({  screenStreamRef,isSharing,peersRef,setIsSharing,setMainVideo,localStreamRef,roomId,socketRef, activePanel,
+const NavigationControl = ({isMicMuted,isCamMuted,toggleMic,screenStreamRef,isSharing,peersRef,setIsSharing,setMainVideo,localStreamRef,roomId,socketRef, activePanel,
   onToggleChat,
   onToggleParticipants
 }) => {
 
-     const [mainMic, setMic] = useState(true);
-      const [mainCam, setCam] = useState(true);
+     const [mainMic, setMic] = useState(isMicMuted);
+      const [mainCam, setCam] = useState(isCamMuted);
       const REACTIONS = ["👍", "👏", "❤️", "😂", "😮", "🔥"];
         const [showReactions, setShowReactions] = useState(false);
 
@@ -171,8 +171,9 @@ const stopScreenShare = async () => {
 
     track.enabled = !track.enabled;
     setMic(track.enabled);
+    toggleMic(track.enabled);
     socketRef.current?.emit("audio-toggle", { roomId, muted: !track.enabled });
-  };
+};
 
   const handleLeaveMeeting = () => {
   const socket = socketRef.current;
