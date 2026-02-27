@@ -28,15 +28,18 @@ const NavigationControl = ({  screenStreamRef,isSharing,peersRef,setIsSharing,se
 
      const [mainMic, setMic] = useState(true);
       const [mainCam, setCam] = useState(true);
+      const REACTIONS = ["👍", "👏", "❤️", "😂", "😮", "🔥"];
+        const [showReactions, setShowReactions] = useState(false);
+
 const navigate = useNavigate();
      useEffect(() => {
   const socket = socketRef.current;
-   console.log("socket 1===>",socketRef)
+  //  console.log("socket 1===>",socketRef)
   if (!socket) return;
-   console.log("socket 2===>",socket)
+  //  console.log("socket 2===>",socket)
 
   socket.on("audio-toggle", (data) => {
-    console.log("mic===>",data)
+    // console.log("mic===>",data)
     if(data.userId===socket.id){
 
       setMic(data.muted);
@@ -85,8 +88,35 @@ const navigate = useNavigate();
     }
   };
 
-  const stopScreenShare = () => {
-  // 1. Kill the screen tracks locally
+//   const stopScreenShare = () => {
+//   // 1. Kill the screen tracks locally
+//   if (screenStreamRef.current) {
+//     screenStreamRef.current.getTracks().forEach(track => track.stop());
+//     screenStreamRef.current = null;
+//   }
+
+//   setIsSharing(false);
+
+//   // 2. Try to get the camera track
+//   const cameraTrack = localStreamRef.current?.getVideoTracks()[0] || null;
+
+//   // 3. Update all peers
+//   Object.values(peersRef.current).forEach(peer => {
+//     const videoSender = peer.getSenders().find(s => s.track?.kind === "video");
+    
+//     if (videoSender) {
+//       // If cameraTrack is null, it cleanly stops the video stream for the client
+//       videoSender.replaceTrack(cameraTrack);
+//     }
+//   });
+
+//   // 4. Update local UI
+//   // If no camera, you might want to set this to null or a placeholder
+//   setMainVideo(localStreamRef.current);
+// };
+
+const stopScreenShare = async () => {
+  // 1️⃣ Stop screen stream locally
   if (screenStreamRef.current) {
     screenStreamRef.current.getTracks().forEach(track => track.stop());
     screenStreamRef.current = null;
@@ -94,22 +124,33 @@ const navigate = useNavigate();
 
   setIsSharing(false);
 
-  // 2. Try to get the camera track
-  const cameraTrack = localStreamRef.current?.getVideoTracks()[0] || null;
+  const cameraTrack = localStreamRef.current?.getVideoTracks()[0];
 
-  // 3. Update all peers
-  Object.values(peersRef.current).forEach(peer => {    
-    const videoSender = peer.getSenders().find(s => s.track?.kind === "video");
-    
-    if (videoSender) {
-      // If cameraTrack is null, it cleanly stops the video stream for the client
-      videoSender.replaceTrack(cameraTrack);
-    }
-  });
+  await Promise.all(
+    Object.values(peersRef.current).map(async (peer) => {
+      const videoSender = peer.getSenders().find(
+        (s) => s.track?.kind === "video"
+      );
 
-  // 4. Update local UI
-  // If no camera, you might want to set this to null or a placeholder
-  setMainVideo(localStreamRef.current);
+      if (!videoSender) return;
+
+      if (cameraTrack) {
+        // ✅ If camera exists → replace track
+        await videoSender.replaceTrack(cameraTrack);
+      } else {
+        // ✅ If no camera → remove track and renegotiate
+        peer.removeTrack(videoSender);
+
+        await peer.setLocalDescription(await peer.createOffer());
+        socketRef.current.emit("signal", {
+          to: peer.remoteUserId, // we will fix this below
+          signal: peer.localDescription,
+        });
+      }
+    })
+  );
+
+  setMainVideo(localStreamRef.current || null);
 };
 
   const toggleVideo = () => {
@@ -123,7 +164,7 @@ const navigate = useNavigate();
 
   const toggleAudio = () => {
     const track = localStreamRef.current?.getAudioTracks()[0];
-    console.log("mic track===>",track)
+    // console.log("mic track===>",track)
 // socketRef.current?.emit("audio-toggle", { roomId, muted: false });
 
     if (!track) return;
@@ -163,6 +204,14 @@ const navigate = useNavigate();
   navigate("/");
 };
 
+function handleReaction(emoji) {
+  socketRef.current.emit("reaction", {
+    roomId,
+    emoji
+  });
+  setShowReactions(false)
+}
+
   return (
     <section className='navigationControllerSc'>
         <div className="container">
@@ -177,9 +226,36 @@ const navigate = useNavigate();
                     <div style={{color:"red !important"}} onClick={handleScreenShare} >
                         <img  src={isSharing?DummyShare:DummyShare} alt="Share" />
                     </div>
-                    <div>
-                        <img src={DummyEmoji} alt="Emoji" />
-                    </div>
+                    <div style={{ position: "relative" }}>
+  <img
+    src={DummyEmoji}
+    alt="Emoji"
+    onClick={() => setShowReactions(p => !p)}
+    style={{ cursor: "pointer" }}
+  />
+
+  {showReactions && (
+    <div style={{
+      position: "absolute",
+      bottom: "50px",
+      background: "#1f1f2e",
+      padding: 10,
+      borderRadius: 10,
+      display: "flex",
+      gap: 8
+    }}>
+      {REACTIONS.map(e => (
+        <span
+          key={e}
+          style={{ fontSize: 22, cursor: "pointer" }}
+          onClick={() => handleReaction(e)}
+        >
+          {e}
+        </span>
+      ))}
+    </div>
+  )}
+</div>
                       {/* <button className='iconBtn'>
                           <img src={MoreIcon} alt="More Icon" />
                       </button> */}

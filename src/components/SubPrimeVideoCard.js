@@ -101,20 +101,39 @@ const iconBadge = {
 ========================================================= */
 function VideoTile({
   user, isActive, large, onClick,
-  showUnpin, onUnpin, objectFit = "cover", compact = false
+  showUnpin, onUnpin, objectFit = "cover", compact = false,hostId
 }) {
   const videoRef = useRef();
   const [hovered, setHovered] = useState(false);
+  const hasActiveVideo =
+  user.stream &&
+  user.stream.getVideoTracks().some(
+    track => track.readyState === "live" && track.enabled
+  );
 
-  useEffect(() => {
-    if (videoRef.current) videoRef.current.srcObject = user.stream || null;
-  }, [user.stream]);
+  // useEffect(() => {
+  //   if (videoRef.current) videoRef.current.srcObject = user.stream || null;
+  // }, [user.stream]);
+
+useEffect(() => {
+  const video = videoRef.current;
+  if (!video) return;
+
+  if (hasActiveVideo) {
+    video.srcObject = user.stream;
+  } else {
+    video.pause();
+    video.srcObject = null;
+    video.removeAttribute("src");
+    video.load();
+  }
+}, [user.stream, hasActiveVideo]);
 
   const initials = user.name?.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase() || "?";
   const avatarColor = useMemo(() => {
     const c = ["#2563eb", "#7c3aed", "#db2777", "#059669", "#d97706", "#0891b2"];
     return c[(user.name?.charCodeAt(0) || 0) % c.length];
-  }, [user.name]);
+  },[user.name]);
 
   return (
     <div
@@ -137,8 +156,10 @@ function VideoTile({
         transition: "box-shadow 0.2s ease",
       }}
     >
+
+
       {/* Video or avatar */}
-      {user.stream ? (
+      {hasActiveVideo? (
         <video
           ref={videoRef} autoPlay playsInline muted
           style={{ width: "100%", height: "100%", objectFit, display: "block" }}
@@ -190,17 +211,46 @@ function VideoTile({
         maxWidth: "calc(100% - 48px)",
         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
       }}>
+
+    {user.userId === hostId && (
+      <div className="host-badge">
+        👑 Host
+      </div>
+    )}
         {user.isScreenSharing && (
           <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#22c55e", display: "inline-block", flexShrink: 0 }} />
         )}
+
+
         {user.name}
       </div>
+
+
+
 
       {/* Top-right status badges */}
       <div style={{ position: "absolute", top: 7, right: 7, display: "flex", gap: 4 }}>
         {user.handRaised   && <div style={iconBadge}><HandIcon /></div>}
         {user.isSpotlighted && <div style={{ ...iconBadge, background: "rgba(124,58,237,0.85)" }}><StarIcon /></div>}
       </div>
+
+
+{/* reaction */}
+      {user.reaction && (
+  <div
+    style={{
+      position: "absolute",
+      bottom: "35%",
+      left: "50%",
+      transform: "translateX(-50%)",
+      fontSize: large ? 60 : 40,
+      animation: "floatUp 2.5s ease-out forwards",
+      pointerEvents: "none",
+    }}
+  >
+    {user.reaction}
+  </div>
+)}
 
       {/* Mic icon */}
       <div style={{
@@ -210,7 +260,7 @@ function VideoTile({
         display: "flex", alignItems: "center", justifyContent: "center",
         border: user.muted ? "1px solid rgba(239,68,68,0.45)" : "none",
       }}>
-        {user.muted ? <MicOffIcon /> : <MicOnIcon />}
+        {user.muted?<MicOffIcon /> : <MicOnIcon />}
       </div>
 
       {/* Unpin button */}
@@ -254,7 +304,7 @@ function VideoTile({
    — containerRef is observed by ResizeObserver so grid
      recalculates automatically when the panel opens/closes
 ========================================================= */
-function GalleryLayout({ users, activeSpeakerId, onPin }) {
+function GalleryLayout({ users, activeSpeakerId, onPin,hostId}) {
   const ref = useRef(null);
   const { cols } = useGridDimensions(ref, users.length);
 
@@ -271,9 +321,10 @@ function GalleryLayout({ users, activeSpeakerId, onPin }) {
     >
       {users.map(u => (
         <VideoTile
-          key={u.userId} user={u}
+          key={u.name} user={u}
           isActive={activeSpeakerId === u.userId}
           onClick={() => onPin(u)}
+          hostId={hostId}
         />
       ))}
     </div>
@@ -283,7 +334,7 @@ function GalleryLayout({ users, activeSpeakerId, onPin }) {
 /* =========================================================
    STAGE LAYOUT  (Pinned / Spotlight / Screen Share)
 ========================================================= */
-function StageLayout({ mainUser, others, activeSpeakerId, onPin, onUnpin, isScreenShare, isPinned }) {
+function StageLayout({ mainUser, others, activeSpeakerId, onPin, onUnpin, isScreenShare, isPinned,hostId }) {
   return (
     <div style={{
       display: "flex", width: "100%", height: "100%",
@@ -297,6 +348,7 @@ function StageLayout({ mainUser, others, activeSpeakerId, onPin, onUnpin, isScre
           objectFit={isScreenShare ? "contain" : "cover"}
           showUnpin={isPinned}
           onUnpin={onUnpin}
+           hostId={hostId}
         />
       </div>
 
@@ -315,6 +367,7 @@ function StageLayout({ mainUser, others, activeSpeakerId, onPin, onUnpin, isScre
                 user={u} compact
                 isActive={activeSpeakerId === u.userId}
                 onClick={() => onPin(u)}
+                hostId
               />
             </div>
           ))}
@@ -388,9 +441,9 @@ function LayoutBadge({ mode }) {
                    The ResizeObserver inside GalleryLayout
                    automatically recalculates the grid.
 ========================================================= */
-export default function SubPrimeVideoCard({ userList = [], activePanel = null }) {
+export default function SubPrimeVideoCard({ userList = [], activePanel = null ,hostId}) {
 
-  console.log("userList=====123>",userList)
+  // console.log("userList=====123>",userList)
 
 
   const [pinnedUser, setPinnedUser]   = useState(null);
@@ -439,6 +492,19 @@ export default function SubPrimeVideoCard({ userList = [], activePanel = null })
           from { opacity: 0; transform: translateX(24px); }
           to   { opacity: 1; transform: translateX(0);    }
         }
+        @keyframes floatUp {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 20px) scale(0.8);
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -80px) scale(1.2);
+  }
+}
       `}</style>
 
       {/*
@@ -469,6 +535,7 @@ export default function SubPrimeVideoCard({ userList = [], activePanel = null })
             "radial-gradient(ellipse at 85% 85%, rgba(124,58,237,0.06) 0%, transparent 55%)",
         }} />
 
+
         {/* Layout */}
         <div style={{ position: "relative", zIndex: 1, width: "100%", height: "100%" }}>
           {layoutMode === "GALLERY" ? (
@@ -476,6 +543,7 @@ export default function SubPrimeVideoCard({ userList = [], activePanel = null })
               users={paginatedUsers}
               activeSpeakerId={activeSpeakerId}
               onPin={handlePinToggle}
+              hostId={hostId}
             />
           ) : (
             <StageLayout
@@ -486,6 +554,7 @@ export default function SubPrimeVideoCard({ userList = [], activePanel = null })
               onUnpin={() => setPinnedUser(null)}
               isScreenShare={layoutMode === "SCREEN"}
               isPinned={layoutMode === "PINNED"}
+              hostId={hostId}
             />
           )}
         </div>
@@ -497,6 +566,7 @@ export default function SubPrimeVideoCard({ userList = [], activePanel = null })
             total={userList.length}
             page={currentPage}
             setPage={setCurrentPage}
+            
           />
         )}
       </div>

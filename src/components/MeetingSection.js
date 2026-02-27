@@ -24,8 +24,8 @@ const ICE_SERVERS = {
   ],
   iceCandidatePoolSize: 10
 };
-
 const MeetingSection = () => {
+  const [isMicMuted, setIsMicMuted] = useState(false);
 
   const [activePanel, setActivePanel] = useState(null);
 
@@ -46,7 +46,7 @@ const MeetingSection = () => {
   const [remoteUsers, setRemoteUsers] = useState([]);
   const [mainVideo, setMainVideo] = useState(null);
   const [isSharing, setIsSharing] = useState(false);
-
+const [hostId, setHostId] = useState(null);
   useEffect(() => {
     const storedUser = localStorage.getItem("user");
     if (!storedUser) return navigate(`/login/${roomId}`);
@@ -56,23 +56,30 @@ const MeetingSection = () => {
 
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
       .then(stream => {
+            console.log("then");
+
         localStreamRef.current = stream;
         setMainVideo(stream);
          socketRef.current?.emit("audio-toggle", { roomId, muted: false });
     socketRef.current?.emit("video-toggle", { roomId, videoOff: false });
+    setIsMicMuted(false)
         setupAndJoin(userName,false);
       })
       .catch(async () => {
-        try {
+        try {            console.log("try");
+
           const audioOnly = await navigator.mediaDevices.getUserMedia({ audio: true });
           localStreamRef.current = audioOnly;
                         socketRef.current?.emit("audio-toggle", { roomId, muted: false });
     socketRef.current?.emit("video-toggle", { roomId, videoOff: true });
+    setIsMicMuted(false)
 
           setupAndJoin(userName,false);
         } catch {
+           console.log("catch");
               socketRef.current?.emit("audio-toggle", { roomId, muted: true });
     socketRef.current?.emit("video-toggle", { roomId, videoOff:true});
+    setIsMicMuted(true)
 
           setupAndJoin(userName,true);
         }
@@ -89,6 +96,7 @@ const MeetingSection = () => {
     socket.off("user-joined");
     socket.off("signal");
     socket.off("user-left");
+    socket.off("reaction");
 
     Object.values(peersRef.current).forEach(peer => peer.close());
     localStreamRef.current?.getTracks().forEach(t => t.stop());
@@ -99,13 +107,20 @@ const MeetingSection = () => {
     const socket = socketRef.current;
     if (!socket) return;
 
-    socket.emit("join-room", { roomId, name: userName });
+    socket.emit("join-room", { roomId, name: userName,muted:micMuted});
 
-    socket.on("all-users", users => {
-      users.forEach(u => u.userId !== socket.id && createPeer(u.userId, u.name,micMuted));
+    socket.on("all-users", ({users,host}) => {
+      users.forEach(u => u.userId !== socket.id && createPeer(u.userId, u.name,u.muted));
+       setHostId(host);
     });
 
-    socket.on("user-joined", u => createPeer(u.userId, u.name,micMuted));
+    socket.on("user-joined", u =>{
+
+      console.log("userJoined",u)
+      createPeer(u.userId, u.name,u.muted)
+    }
+    
+    );
 
     socket.on("signal", async ({ from, signal }) => {
       const peer = peersRef.current[from];
@@ -138,7 +153,8 @@ const MeetingSection = () => {
 
 
     socket.on("audio-toggle", ({ userId, muted }) => {
-          console.log("audio-toggle==>",muted)
+      
+          // console.log("audio-toggle==>",muted)
 
   setRemoteUsers(prev =>
     prev.map(user =>
@@ -147,6 +163,27 @@ const MeetingSection = () => {
         : user
     )
   );
+});
+
+socket.on("reaction", ({ userId, emoji }) => {
+  setRemoteUsers(prev =>
+    prev.map(user =>
+      user.userId === userId
+        ? { ...user, reaction: emoji }
+        : user
+    )
+  );
+
+  // remove after 3 seconds
+  setTimeout(() => {
+    setRemoteUsers(prev =>
+      prev.map(user =>
+        user.userId === userId
+          ? { ...user, reaction: null }
+          : user
+      )
+    );
+  }, 3000);
 });
 
     socket.on("user-left", id => {
@@ -164,6 +201,7 @@ function createPeer(userId, userName,micMuted) {
 
   setRemoteUsers(prev => {
     if (prev.find(u => u.userId === userId)) return prev;
+    console.log("prev ====>",prev)
     return [...prev, { userId, name: userName, stream: null ,muted:micMuted}];
   });
 
@@ -174,10 +212,24 @@ function createPeer(userId, userName,micMuted) {
   }
 
   // Add video (camera initially)
+  // const camTrack = localStreamRef.current?.getVideoTracks()[0];
+  // if (camTrack) {
+  //   peer.addTrack(camTrack, localStreamRef.current);
+  // }
+
+  // Add video track correctly (camera OR screen)
+
+if (screenStreamRef.current) {
+  const screenTrack = screenStreamRef.current.getVideoTracks()[0];
+  if (screenTrack) {
+    peer.addTrack(screenTrack, screenStreamRef.current);
+  }
+} else {
   const camTrack = localStreamRef.current?.getVideoTracks()[0];
   if (camTrack) {
     peer.addTrack(camTrack, localStreamRef.current);
   }
+}
 
   peer.onicecandidate = e => {
     if (e.candidate) {
@@ -187,11 +239,33 @@ function createPeer(userId, userName,micMuted) {
 
   peer.ontrack = e => {
     console.log("REMOTE STREAM RECEIVED");
+
+    const stream = e.streams[0];
+
+  e.track.onended = () => {
     setRemoteUsers(prev =>
       prev.map(u =>
-        u.userId === userId ? { ...u, stream: e.streams[0] } : u
+        u.userId === userId
+          ? { ...u, stream: null }
+          : u
       )
     );
+  };
+
+  setRemoteUsers(prev =>
+    prev.map(u =>
+      u.userId === userId
+        ? { ...u, stream }
+        : u
+    )
+  );
+
+
+    // setRemoteUsers(prev =>
+    //   prev.map(u =>
+    //     u.userId === userId ? { ...u, stream: e.streams[0] } : u
+    //   )
+    // );
   };
 
   peer.onnegotiationneeded = async () => {
@@ -205,17 +279,17 @@ function createPeer(userId, userName,micMuted) {
   };
 
   // ✅ FORCE SCREEN TRACK IF SHARING IS ACTIVE
-  setTimeout(() => {
-    if (screenStreamRef.current) {
-      const screenTrack = screenStreamRef.current.getVideoTracks()[0];
-      const sender = peer.getSenders().find(s => s.track?.kind === "video");
+  // setTimeout(() => {
+  //   if (screenStreamRef.current) {
+  //     const screenTrack = screenStreamRef.current.getVideoTracks()[0];
+  //     const sender = peer.getSenders().find(s => s.track?.kind === "video");
 
-      if (sender && screenTrack) {
-        console.log("FORCING SCREEN TRACK TO NEW USER");
-        sender.replaceTrack(screenTrack);
-      }
-    }
-  }, 500);
+  //     if (sender && screenTrack) {
+  //       console.log("FORCING SCREEN TRACK TO NEW USER");
+  //       sender.replaceTrack(screenTrack);
+  //     }
+  //   }
+  // }, 500);
 }
 
 
@@ -244,10 +318,13 @@ function createPeer(userId, userName,micMuted) {
   style={{ transition: "all 0.35s ease", height: "calc(100vh - 130px)" }}>
   <SubPrimeVideoCard
     userList={[
-      { userId: socketRef.current?.id, name, stream: mainVideo, muted: true },
+      { userId: socketRef.current?.id, name, stream: mainVideo, muted:isMicMuted },
       ...remoteUsers
     ]}
-    activePanel={activePanel}  
+    activePanel={activePanel}
+
+    hostId={hostId}  
+
   />
 {/* </div> */}
           </div>
@@ -272,7 +349,7 @@ function createPeer(userId, userName,micMuted) {
             <div className="col-lg-12">
               <div className="bottomControllers">
               <Participants/>
-              <NavigationControl    
+              <NavigationControl
            
               peersRef={peersRef}
               localStreamRef={localStreamRef}
