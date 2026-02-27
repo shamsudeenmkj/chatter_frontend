@@ -301,7 +301,9 @@ function toggleMic(mic){
   setIsMicMuted(mic);
 }
 
-
+function toggleCam(cam){
+  setIsCamMuted(cam);
+}
 
 
   return (
@@ -364,6 +366,7 @@ isMicMuted={isMicMuted}
 isCamMuted={isCamMuted}
 
            toggleMic={toggleMic}
+           toggleCam={toggleCam}
               peersRef={peersRef}
               localStreamRef={localStreamRef}
               screenStreamRef={screenStreamRef}

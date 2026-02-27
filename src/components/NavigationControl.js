@@ -21,13 +21,13 @@ import MainCamOff from "../assets/videoCloseIcon.svg";
 
 
 
-const NavigationControl = ({isMicMuted,isCamMuted,toggleMic,screenStreamRef,isSharing,peersRef,setIsSharing,setMainVideo,localStreamRef,roomId,socketRef, activePanel,
+const NavigationControl = ({isMicMuted,isCamMuted,toggleMic,toggleCam,screenStreamRef,isSharing,peersRef,setIsSharing,setMainVideo,localStreamRef,roomId,socketRef, activePanel,
   onToggleChat,
   onToggleParticipants
 }) => {
 
-     const [mainMic, setMic] = useState(isMicMuted);
-      const [mainCam, setCam] = useState(isCamMuted);
+    //  const [mainMic, setMic] = useState(isMicMuted);
+    //   const [mainCam, setCam] = useState(isCamMuted);
       const REACTIONS = ["👍", "👏", "❤️", "😂", "😮", "🔥"];
         const [showReactions, setShowReactions] = useState(false);
 
@@ -42,12 +42,12 @@ const navigate = useNavigate();
     // console.log("mic===>",data)
     if(data.userId===socket.id){
 
-      setMic(data.muted);
+      // setMic(data.muted);
     }
   });
 
   socket.on("video-toggle", (data) => {
-    setCam(data.videoOff);
+    // setCam(data.videoOff);
   });
 
   return () => {
@@ -158,7 +158,9 @@ const stopScreenShare = async () => {
     if (!track) return;
 
     track.enabled = !track.enabled;
-    setCam(track.enabled);
+    // setCam(track.enabled);
+        toggleCam(!track.enabled);
+
     socketRef.current?.emit("video-toggle", { roomId, videoOff: !track.enabled });
   };
 
@@ -170,8 +172,8 @@ const stopScreenShare = async () => {
     if (!track) return;
 
     track.enabled = !track.enabled;
-    setMic(track.enabled);
-    toggleMic(track.enabled);
+    // setMic(track.enabled);
+    toggleMic(!track.enabled);
     socketRef.current?.emit("audio-toggle", { roomId, muted: !track.enabled });
 };
 
@@ -219,10 +221,10 @@ function handleReaction(emoji) {
             <div className="row">
                 <div className="navControllerCnt">
                     <button className='iconBtn'  onClick={toggleAudio}>
-                        <img src={mainMic ? MainMicOff:NavMicOpen}   alt="Mic" />
+                        <img src={isMicMuted ? MainMicOff:NavMicOpen}   alt="Mic" />
                     </button>
                     <div  onClick={toggleVideo}>
-                        <img src={mainCam ?MainCamOff :DummyCam} alt="Cam" />
+                        <img src={isCamMuted ?MainCamOff :DummyCam} alt="Cam" />
                     </div>
                     <div style={{color:"red !important"}} onClick={handleScreenShare} >
                         <img  src={isSharing?DummyShare:DummyShare} alt="Share" />
