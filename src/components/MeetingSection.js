@@ -7,6 +7,8 @@ import NavigationControl from "./NavigationControl";
 import SubPrimeVideoCard from "./SubPrimeVideoCard";
 import LinkSharingCard from "./LinkSharingCard";
 import { useSocket } from "../sockets/socket";
+const SIGNALING_SERVER = "https://chatter-backend-4i7g.onrender.com";
+// const SIGNALING_SERVER = 'http://localhost:8000';
 
 const ICE_SERVERS = {
   iceServers: [
@@ -49,49 +51,120 @@ const MeetingSection = () => {
   const [mainVideo, setMainVideo] = useState(null);
   const [isSharing, setIsSharing] = useState(false);
 const [hostId, setHostId] = useState(null);
-  useEffect(() => {
-    const storedUser = localStorage.getItem("user");
-    if (!storedUser) return navigate(`/login/${roomId}`);
+  // useEffect(() => {
+  //   const storedUser = localStorage.getItem("user");
+  //   if (!storedUser) return navigate(`/login/${roomId}`);
 
-    const userName = JSON.parse(storedUser).name;
-    setName(userName);
+  //   const userName = JSON.parse(storedUser).name;
+  //   setName(userName);
 
-    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-      .then(stream => {
-            console.log("then");
+  //   navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+  //     .then(stream => {
+  //           console.log("then");
 
-        localStreamRef.current = stream;
-        setMainVideo(stream);
-         socketRef.current?.emit("audio-toggle", { roomId, muted: false });
-    socketRef.current?.emit("video-toggle", { roomId, videoOff: false });
-    setIsMicMuted(false)
-    setIsCamMuted(false)
-        setupAndJoin(userName,false);
-      })
-      .catch(async () => {
-        try {            console.log("try");
+  //       localStreamRef.current = stream;
+  //       setMainVideo(stream);
+  //        socketRef.current?.emit("audio-toggle", { roomId, muted: false });
+  //   socketRef.current?.emit("video-toggle", { roomId, videoOff: false });
+  //   setIsMicMuted(false)
+  //   setIsCamMuted(false)
+  //       setupAndJoin(userName,false);
+  //     })
+  //     .catch(async () => {
+  //       try {            console.log("try");
 
-          const audioOnly = await navigator.mediaDevices.getUserMedia({ audio: true });
-          localStreamRef.current = audioOnly;
-                        socketRef.current?.emit("audio-toggle", { roomId, muted: false });
-    socketRef.current?.emit("video-toggle", { roomId, videoOff: true });
-    setIsMicMuted(false)
-    setIsCamMuted(false)
+  //         const audioOnly = await navigator.mediaDevices.getUserMedia({ audio: true });
+  //         localStreamRef.current = audioOnly;
+  //                       socketRef.current?.emit("audio-toggle", { roomId, muted: false });
+  //   socketRef.current?.emit("video-toggle", { roomId, videoOff: true });
+  //   setIsMicMuted(false)
+  //   setIsCamMuted(false)
 
-          setupAndJoin(userName,false);
-        } catch {
-           console.log("catch");
-              socketRef.current?.emit("audio-toggle", { roomId, muted: true });
-    socketRef.current?.emit("video-toggle", { roomId, videoOff:true});
-    setIsMicMuted(true)
-    setIsCamMuted(true)
+  //         setupAndJoin(userName,false);
+  //       } catch {
+  //          console.log("catch");
+  //             socketRef.current?.emit("audio-toggle", { roomId, muted: true });
+  //   socketRef.current?.emit("video-toggle", { roomId, videoOff:true});
+  //   setIsMicMuted(true)
+  //   setIsCamMuted(true)
 
-          setupAndJoin(userName,true);
-        }
+  //         setupAndJoin(userName,true);
+  //       }
+  //     });
+
+  //   return cleanup;
+  // }, []);
+
+useEffect(() => {
+  const token = localStorage.getItem("token");
+  if (!token) return navigate(`/login/${roomId}`);
+
+  async function initRoom() {
+    try {
+      // ── 1. Auth ──────────────────────────────────────────
+      const authRes = await fetch(`${SIGNALING_SERVER}/autosignin`, {
+        headers: { Authorization: `Bearer ${token}` }
       });
+      const authData = await authRes.json();
+      if (!authData.success) return navigate(`/login/${roomId}`);
 
-    return cleanup;
-  }, []);
+      const userName = authData.user.name;
+      setName(userName);
+
+      // ── 2. Meeting state (mic/cam from DB) ───────────────
+      const meetingRes = await fetch(`${SIGNALING_SERVER}/meeting-state/${roomId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const meetingData = await meetingRes.json();
+
+      // participant state saved when room was created
+      const wantMic = meetingData?.participant?.micOn ?? true;
+      const wantCam = meetingData?.participant?.camOn ?? true;
+
+      // ── 3. Get media based on backend state ──────────────
+      let stream = null;
+      let micMuted = !wantMic;
+      let camMuted = !wantCam;
+
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: wantCam,
+          audio: wantMic
+        });
+      } catch {
+        // fallback: try audio only
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          camMuted = true;
+        } catch {
+          // no media at all
+          micMuted = true;
+          camMuted = true;
+        }
+      }
+
+      localStreamRef.current = stream;
+      setMainVideo(stream);
+      setIsMicMuted(micMuted);
+      setIsCamMuted(camMuted);
+
+              socketRef.current?.emit("audio-toggle", { roomId, muted: micMuted });
+    socketRef.current?.emit("video-toggle", { roomId, videoOff: camMuted });
+  
+
+      // ── 4. Join room ──────────────────────────────────────
+      setupAndJoin(userName, micMuted);
+
+    } catch (err) {
+      console.error("Room init failed:", err);
+      navigate(`/login/${roomId}`);
+    }
+  }
+
+  initRoom();
+  return cleanup;
+}, []);
+
 
   function cleanup() {
     const socket = socketRef.current;
@@ -171,6 +244,7 @@ const [hostId, setHostId] = useState(null);
 });
 
 socket.on("reaction", ({ userId, emoji }) => {
+  console.log("emoji ==>",emoji)
   setRemoteUsers(prev =>
     prev.map(user =>
       user.userId === userId
@@ -188,7 +262,7 @@ socket.on("reaction", ({ userId, emoji }) => {
           : user
       )
     );
-  }, 3000);
+  },4000);
 });
 
     socket.on("user-left", id => {
@@ -359,7 +433,7 @@ function toggleCam(cam){
         <div className="row">
             <div className="col-lg-12">
               <div className="bottomControllers">
-              <Participants/>
+              <Participants count={remoteUsers.length+1}/>
               <NavigationControl
               
 isMicMuted={isMicMuted}

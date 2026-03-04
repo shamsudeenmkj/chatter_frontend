@@ -10,7 +10,6 @@ import "../Header.css"
 const LandingPage = () => {
   return (
     <div>
-      <Header/>
       <HeroSec/>
       <Footer/>
     </div>

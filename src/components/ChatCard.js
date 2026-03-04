@@ -145,7 +145,7 @@ const ChatCard = ({userList,onToggleChat}) => {
             <Tab>Chats</Tab>
             <Tab>Poll</Tab>
           </TabList>
-            <button onClick={onToggleChat} style={{color:"white",background:"transparent",height:"30px",width:"30px"}}>X</button>
+            <button className="chatPollCnt" onClick={onToggleChat} style={{color:"white",background:"transparent",height:"30px",width:"30px"}}>X</button>
 
           </div>
 
@@ -176,20 +176,24 @@ const ChatCard = ({userList,onToggleChat}) => {
               {/* PRIVATE CHAT BOX */}
               {activePrivateUser && (
                 <div className="privateChatBox">
-                  <h4>Private Chat with {activePrivateUser.name}</h4>
+                  <div className="hdAndClose">
+                    <h4>Private Chat with {activePrivateUser.name}</h4>
+                  <button onClick={() => setActivePrivateUser(null)} style={{ marginTop: 6 }}>Close X</button>
+                  </div>                  
                   <div className="privateChatMessages">
                     {(privateMessages[activePrivateUser.privateRoomId] || []).map((msg, i) => {
                       const mine = msg.senderId === socketRef.current.id;
                       return (
-                        <div key={i} style={{ textAlign: mine ? "right" : "left", marginBottom: 6 }}>
-                          <p style={{ fontSize: 12 }}><b>{msg.userName}</b></p>
-                          <p>{msg.message}</p>
+                        <div className="privateChatBgColor" key={i} style={{ textAlign: mine ? "right" : "left", marginBottom: 6 }}>
+                          <p className="privateChatUserName"><b>{msg.userName}</b></p>
+                          <p className="privateMsg">{msg.message}</p>
                         </div>
                       );
                     })}
                     <div ref={privateChatEndRef}></div>
                   </div>
                   <div className="msgBoxCnt">
+                    <button><img src={DocAttachIcon} alt="Attachment" /></button>
                     <input
                       value={privateText}
                       placeholder={`Message ${activePrivateUser.name}`}
@@ -197,8 +201,7 @@ const ChatCard = ({userList,onToggleChat}) => {
                       onKeyDown={(e) => e.key === "Enter" && sendPrivateMessage()}
                     />
                     <button onClick={sendPrivateMessage}><img src={SentBtn} alt="Send" /></button>
-                  </div>
-                  <button onClick={() => setActivePrivateUser(null)} style={{ marginTop: 6 }}>← Close</button>
+                  </div>                  
                 </div>
               )}
             </div>

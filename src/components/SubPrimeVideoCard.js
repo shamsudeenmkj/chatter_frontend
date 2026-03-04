@@ -521,7 +521,7 @@ export default function SubPrimeVideoCard({ userList = [], activePanel = null ,h
           minHeight: 0,
           position: "relative",
           overflow: "hidden",
-          background: "linear-gradient(145deg, #0d0d1a 0%, #0a0a18 100%)",
+          // background: "linear-gradient(145deg, #0d0d1a 0%, #0a0a18 100%)",
           borderRadius: 12,
           transition: "width 0.35s ease",   /* smooth when parent col changes */
         }}
@@ -529,9 +529,9 @@ export default function SubPrimeVideoCard({ userList = [], activePanel = null ,h
         {/* Subtle ambient glow */}
         <div style={{
           position: "absolute", inset: 0, pointerEvents: "none", zIndex: 0,
-          background:
-            "radial-gradient(ellipse at 15% 15%, rgba(37,99,235,0.06) 0%, transparent 55%)," +
-            "radial-gradient(ellipse at 85% 85%, rgba(124,58,237,0.06) 0%, transparent 55%)",
+          // background:
+          //   "radial-gradient(ellipse at 15% 15%, rgba(37,99,235,0.06) 0%, transparent 55%)," +
+          //   "radial-gradient(ellipse at 85% 85%, rgba(124,58,237,0.06) 0%, transparent 55%)",
         }} />
 
 

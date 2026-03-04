@@ -11,7 +11,11 @@ export const SocketProvider = ({ children }) => {
   const socketRef = useRef(null);
 
   useEffect(() => {
-    socketRef.current = io(SIGNALING_SERVER);
+    const token = localStorage.getItem("token");
+
+    socketRef.current = io(SIGNALING_SERVER, {
+  auth: { token }
+});
 
     return () => {
       socketRef.current.disconnect();

@@ -2,31 +2,43 @@ import { useState } from "react";
 
 import GuestIcon from '../assets/guestLoginIcon.svg';
 import { Link } from "react-router-dom";
-function SignInForm({ onSwitch }) {
+function SignInForm({ onSwitch ,autoSignIn}) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
   const [errors, setErrors] = useState({});
 
+  const SIGNALING_SERVER = "https://chatter-backend-4i7g.onrender.com";
+// const SIGNALING_SERVER = 'http://localhost:8000';
+
   // Handle form submit
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    let formErrors = {};
+  const handleSubmit = async (e) => {
+  e.preventDefault();
 
-    if (!email.trim()) formErrors.email = "Email is required.";
-    else if (!/\S+@\S+\.\S+/.test(email))
-      formErrors.email = "Enter a valid email address.";
+  if (Object.keys(errors).length === 0) {
 
-    if (!password.trim()) formErrors.password = "Password is required.";
+    const response = await fetch(`${SIGNALING_SERVER}/signin`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ email, password })
+    });
 
-    setErrors(formErrors);
+    const data = await response.json();
 
-    if (Object.keys(formErrors).length === 0) {
-      console.log("Form submitted:", { email, password });
-      alert("Signed In Successfully!");
+    if (data.success) {
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("user", JSON.stringify(data.user));
+      // alert("Login successful!");
+      console.log(autoSignIn)
+      autoSignIn();
+    } else {
+      alert(data.message);
     }
-  };
+  }
+};
 
   return (
     <>

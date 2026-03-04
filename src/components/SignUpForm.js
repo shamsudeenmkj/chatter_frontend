@@ -7,36 +7,34 @@ function SignUpForm({ onSwitch }) {
   const [name, setName] = useState("");
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [errors, setErrors] = useState({});
+  const SIGNALING_SERVER = "https://chatter-backend-4i7g.onrender.com";
+// const SIGNALING_SERVER = 'http://localhost:8000';
 
   // Handle form submit
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    let formErrors = {};
+ const handleSubmit = async (e) => {
+  e.preventDefault();
 
-    if (!name.trim()) formErrors.name = "Name is required.";
+  // validation here...
 
-    if (!email.trim()) formErrors.email = "Email is required.";
-    else if (!/\S+@\S+\.\S+/.test(email))
-      formErrors.email = "Enter a valid email address.";
+  if (Object.keys(errors).length === 0) {
+    const response = await fetch(`${SIGNALING_SERVER}/signup`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ name, email, password })
+    });
 
-    if (!password.trim()) formErrors.password = "Password is required.";
-    else if (password.length < 6)
-      formErrors.password = "Password must be at least 6 characters.";
+    const data = await response.json();
 
-    if (password !== confirmPassword)
-      formErrors.confirmPassword = "Passwords do not match.";
-
-    if (!agreeTerms) formErrors.agreeTerms = "You must agree to the terms.";
-
-    setErrors(formErrors);
-
-    if (Object.keys(formErrors).length === 0) {
-      console.log("Form submitted:", { name, email, password });
+    if (data.success) {
       alert("Account created successfully!");
-
-      onSwitch("signin");   // ✅ (2) Switch back to SignInForm after success
+      onSwitch("signin");
+    } else {
+      alert(data.message);
     }
-  };
+  }
+};
 
   return (
     <form className="signin-form signup-form" onSubmit={handleSubmit}>

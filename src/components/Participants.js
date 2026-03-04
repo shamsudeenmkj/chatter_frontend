@@ -1,12 +1,12 @@
 import React from 'react'
 
-const Participants = () => {
+const Participants = ({count}) => {
   return (
     <section className='participantsSc'>
         <div className="container">
             <div className="row">
                 <div className="participantsCnt">
-                    <p className='parCount'>34</p>
+                    <p className='parCount'>{count}</p>
                     <p>Participants</p>
                 </div>
             </div>

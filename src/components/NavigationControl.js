@@ -245,7 +245,8 @@ function handleReaction(emoji) {
       padding: 10,
       borderRadius: 10,
       display: "flex",
-      gap: 8
+      gap: 8,
+          zIndex:"1"
     }}>
       {REACTIONS.map(e => (
         <span

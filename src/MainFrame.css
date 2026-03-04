@@ -48,6 +48,9 @@
     background-color: #004ECC;
     color: #ffffff;
 }
+.createmBtn a{
+    text-decoration: none;
+}
 .mainFrameSc .joinAndCreateBtn{
     display: flex;
     align-items: center;

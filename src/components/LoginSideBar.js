@@ -1,15 +1,16 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Offcanvas, Button } from "react-bootstrap";
 import 'bootstrap/dist/css/bootstrap.min.css';
 import SignInForm from "./SignInForm";
 import SignUpForm from './SignUpForm';
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 
 function LoginSideBar(name) {
   const [show, setShow] = useState(false);
   // New
   const [currentForm,setCurrentForm] = useState("signin");
+
 
   return (
     <div>
