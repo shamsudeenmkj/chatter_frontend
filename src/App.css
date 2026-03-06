@@ -640,7 +640,7 @@ padding: 10px;
         display: block;
     }
     .chatPollWholeCnt{
-        display: none;
+        /* display: none; */
     }
     .bottomControllers{
             gap: 12px;
