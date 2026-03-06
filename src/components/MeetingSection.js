@@ -431,25 +431,7 @@ function toggleCam(cam){
 )} */}
 
 
-{/* {activePanel && (
-  <div
-    className={`${
-      activePanel ? "col-lg-4 col-xl-4 col-xxl-3" : ""
-    } chatPanel`}
-  >
-    {activePanel === "chat" && (
-      <ChatCard
-        userList={remoteUsers}
-        onToggleChat={() =>
-          setActivePanel((p) => (p === "chat" ? null : "chat"))
-        }
-      />
-    )}
-
-    {activePanel === "participants" && <Participants />}
-  </div>
-)} */}
-
+{activePanel && <div className="chatBackdrop" onClick={() => setActivePanel(null)} />}
 
 {activePanel && (
   <div className="chatPanel">
