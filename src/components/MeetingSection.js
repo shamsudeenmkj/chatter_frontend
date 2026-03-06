@@ -421,29 +421,11 @@ function toggleCam(cam){
           </div> */}
 
 
-{/* {activePanel && (
+{activePanel && (
   <div className="col-lg-4 col-xl-4 col-xxl-3"
     style={{ height: "calc(100vh - 130px)", animation: "slideInRight 0.35s ease" }}>
     {activePanel === "chat" && <ChatCard userList={remoteUsers}   onToggleChat={() => setActivePanel(p => p === "chat" ? null : "chat")}
 />}
-    {activePanel === "participants" && <Participants />}
-  </div>
-)} */}
-
-
-{activePanel && <div className="chatBackdrop" onClick={() => setActivePanel(null)} />}
-
-{activePanel && (
-  <div className="chatPanel">
-    {activePanel === "chat" && (
-      <ChatCard
-        userList={remoteUsers}
-        onToggleChat={() =>
-          setActivePanel((p) => (p === "chat" ? null : "chat"))
-        }
-      />
-    )}
-
     {activePanel === "participants" && <Participants />}
   </div>
 )}
