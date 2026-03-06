@@ -421,10 +421,31 @@ function toggleCam(cam){
           </div> */}
 
 
-{activePanel && (
-<div className="col-12 col-md-5 col-lg-4 col-xl-4 col-xxl-3" style={{ height: "calc(100vh - 130px)", animation: "slideInRight 0.35s ease" }}>
+{/* {activePanel && (
+  <div className="col-lg-4 col-xl-4 col-xxl-3"
+    style={{ height: "calc(100vh - 130px)", animation: "slideInRight 0.35s ease" }}>
     {activePanel === "chat" && <ChatCard userList={remoteUsers}   onToggleChat={() => setActivePanel(p => p === "chat" ? null : "chat")}
 />}
+    {activePanel === "participants" && <Participants />}
+  </div>
+)} */}
+
+
+{activePanel && (
+  <div
+    className={`${
+      activePanel ? "col-lg-4 col-xl-4 col-xxl-3" : ""
+    } chatPanel`}
+  >
+    {activePanel === "chat" && (
+      <ChatCard
+        userList={remoteUsers}
+        onToggleChat={() =>
+          setActivePanel((p) => (p === "chat" ? null : "chat"))
+        }
+      />
+    )}
+
     {activePanel === "participants" && <Participants />}
   </div>
 )}
