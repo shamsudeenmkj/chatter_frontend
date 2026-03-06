@@ -101,7 +101,7 @@ const iconBadge = {
 ========================================================= */
 function VideoTile({
   user, isActive, large, onClick,
-  showUnpin, onUnpin, objectFit = "cover", compact = false,hostId
+  showUnpin, onUnpin, objectFit = "cover", compact = false,hostId,localUserId
 }) {
   const videoRef = useRef();
   const [hovered, setHovered] = useState(false);
@@ -161,7 +161,7 @@ useEffect(() => {
       {/* Video or avatar */}
       {hasActiveVideo? (
         <video
-          ref={videoRef} autoPlay playsInline
+          ref={videoRef} autoPlay playsInline muted={user.userId===localUserId}
           style={{ width: "100%", height: "100%", objectFit, display: "block" }}
         />
       ) : (
@@ -304,7 +304,7 @@ useEffect(() => {
    — containerRef is observed by ResizeObserver so grid
      recalculates automatically when the panel opens/closes
 ========================================================= */
-function GalleryLayout({ users, activeSpeakerId, onPin,hostId}) {
+function GalleryLayout({ users, activeSpeakerId, onPin,hostId,localUserId}) {
   const ref = useRef(null);
   const { cols } = useGridDimensions(ref, users.length);
 
@@ -325,6 +325,7 @@ function GalleryLayout({ users, activeSpeakerId, onPin,hostId}) {
           isActive={activeSpeakerId === u.userId}
           onClick={() => onPin(u)}
           hostId={hostId}
+          localUserId={localUserId}
         />
       ))}
     </div>
@@ -334,7 +335,7 @@ function GalleryLayout({ users, activeSpeakerId, onPin,hostId}) {
 /* =========================================================
    STAGE LAYOUT  (Pinned / Spotlight / Screen Share)
 ========================================================= */
-function StageLayout({ mainUser, others, activeSpeakerId, onPin, onUnpin, isScreenShare, isPinned,hostId }) {
+function StageLayout({ mainUser, others, activeSpeakerId, onPin, onUnpin, isScreenShare, isPinned,hostId,localUserId}) {
   return (
     <div style={{
       display: "flex", width: "100%", height: "100%",
@@ -349,6 +350,7 @@ function StageLayout({ mainUser, others, activeSpeakerId, onPin, onUnpin, isScre
           showUnpin={isPinned}
           onUnpin={onUnpin}
            hostId={hostId}
+           localUserId={localUserId}
         />
       </div>
 
@@ -367,7 +369,8 @@ function StageLayout({ mainUser, others, activeSpeakerId, onPin, onUnpin, isScre
                 user={u} compact
                 isActive={activeSpeakerId === u.userId}
                 onClick={() => onPin(u)}
- hostId={hostId}              />
+ hostId={hostId}        
+ localUserId={localUserId}      />
             </div>
           ))}
         </div>
@@ -440,7 +443,7 @@ function LayoutBadge({ mode }) {
                    The ResizeObserver inside GalleryLayout
                    automatically recalculates the grid.
 ========================================================= */
-export default function SubPrimeVideoCard({ userList = [], activePanel = null ,hostId}) {
+export default function SubPrimeVideoCard({ userList = [], activePanel = null ,hostId,localUserId}) {
 
   // console.log("userList=====123>",userList)
 
@@ -543,6 +546,7 @@ export default function SubPrimeVideoCard({ userList = [], activePanel = null ,h
               activeSpeakerId={activeSpeakerId}
               onPin={handlePinToggle}
               hostId={hostId}
+              localUserId={localUserId}
             />
           ) : (
             <StageLayout
@@ -554,6 +558,7 @@ export default function SubPrimeVideoCard({ userList = [], activePanel = null ,h
               isScreenShare={layoutMode === "SCREEN"}
               isPinned={layoutMode === "PINNED"}
               hostId={hostId}
+              localUserId={localUserId}
             />
           )}
         </div>

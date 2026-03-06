@@ -409,6 +409,7 @@ function toggleCam(cam){
     activePanel={activePanel}
 
     hostId={hostId}  
+  localUserId={socketRef.current?.id}
 
   />
 {/* </div> */}
