@@ -390,50 +390,66 @@ if (screenStreamRef.current) {
     }
   };
 
-  peer.ontrack = e => {
-    console.log("REMOTE STREAM RECEIVED");
+  // peer.ontrack = e => {
+  //   console.log("REMOTE STREAM RECEIVED");
 
-    const stream = e.streams[0];
+  //   const stream = e.streams[0];
+
+  // e.track.onended = () => {
+  //   setRemoteUsers(prev =>
+  //     prev.map(u =>
+  //       u.userId === userId
+  //         ? { ...u, stream: null }
+  //         : u
+  //     )
+  //   );
+  // };
+
+  //  const assignStream = () => {
+  //   setRemoteUsers(prev =>
+  //     prev.map(u => u.userId === userId ? { ...u, stream } : u)
+  //   );
+  // };
+
+  // if (stream.getTracks().some(t => t.readyState === "live")) {
+  //   assignStream();
+  // } else {
+  //   // ✅ Retry after short delay for Safari
+  //   setTimeout(assignStream, 500);
+  // }
+
+  // setRemoteUsers(prev =>
+  //   prev.map(u =>
+  //     u.userId === userId
+  //       ? { ...u, stream }
+  //       : u
+  //   )
+  // );
+
+
+  //   // setRemoteUsers(prev =>
+  //   //   prev.map(u =>
+  //   //     u.userId === userId ? { ...u, stream: e.streams[0] } : u
+  //   //   )
+  //   // );
+  // };
+peer.ontrack = e => {
+  console.log("REMOTE STREAM RECEIVED", e.track.kind, e.streams.length);
+
+  // ✅ Safari sometimes fires with empty streams[] — build manually
+  const stream = e.streams?.[0] ?? new MediaStream([e.track]);
 
   e.track.onended = () => {
     setRemoteUsers(prev =>
-      prev.map(u =>
-        u.userId === userId
-          ? { ...u, stream: null }
-          : u
-      )
+      prev.map(u => u.userId === userId ? { ...u, stream: null } : u)
     );
   };
 
-   const assignStream = () => {
-    setRemoteUsers(prev =>
-      prev.map(u => u.userId === userId ? { ...u, stream } : u)
-    );
-  };
-
-  if (stream.getTracks().some(t => t.readyState === "live")) {
-    assignStream();
-  } else {
-    // ✅ Retry after short delay for Safari
-    setTimeout(assignStream, 500);
-  }
-
+  // ✅ Single assignment only — no duplicate below
   setRemoteUsers(prev =>
-    prev.map(u =>
-      u.userId === userId
-        ? { ...u, stream }
-        : u
-    )
+    prev.map(u => u.userId === userId ? { ...u, stream } : u)
   );
-
-
-    // setRemoteUsers(prev =>
-    //   prev.map(u =>
-    //     u.userId === userId ? { ...u, stream: e.streams[0] } : u
-    //   )
-    // );
-  };
-
+};
   peer.onnegotiationneeded = async () => {
     try {
       makingOfferRef.current[userId] = true;

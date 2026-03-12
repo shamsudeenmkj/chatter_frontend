@@ -99,33 +99,53 @@ const iconBadge = {
 /* =========================================================
    VIDEO TILE
 ========================================================= */
-function VideoTile({
-  user, isActive, large, onClick,
-  showUnpin, onUnpin, objectFit = "cover", compact = false,hostId,localUserId
-}) {
-  const videoRef = useRef();
-  const [hovered, setHovered] = useState(false);
-  // const hasActiveVideo =
-  // user.stream &&
-  // user.stream.getVideoTracks().some(
-  //   track => track.readyState === "live" && track.enabled
-  // );
+// function VideoTile({
+//   user, isActive, large, onClick,
+//   showUnpin, onUnpin, objectFit = "cover", compact = false,hostId,localUserId
+// }) {
+//   const videoRef = useRef();
+//   const [hovered, setHovered] = useState(false);
+//   // const hasActiveVideo =
+//   // user.stream &&
+//   // user.stream.getVideoTracks().some(
+//   //   track => track.readyState === "live" && track.enabled
+//   // );
 
-  const hasActiveVideo =
-  user.stream &&
-  user.stream.getVideoTracks().length > 0 &&
-  user.stream.getVideoTracks().some(track => track.enabled);
+//   const hasActiveVideo =
+//   user.stream &&
+//   user.stream.getVideoTracks().length > 0 &&
+//   user.stream.getVideoTracks().some(track => track.enabled);
 
+
+// // useEffect(() => {
+
+// //   // In VideoTile, temporarily add:
+// // console.log("authId:", user.authId, "hostId:", hostId, "match:", user.authId === hostId);
+// //   const video = videoRef.current;
+// //   if (!video) return;
+
+// //   if (hasActiveVideo) {
+// //     video.srcObject = user.stream;
+// //   } else {
+// //     video.pause();
+// //     video.srcObject = null;
+// //     video.removeAttribute("src");
+// //     video.load();
+// //   }
+// // }, [user.stream, hasActiveVideo]);
 
 // useEffect(() => {
-
-//   // In VideoTile, temporarily add:
-// console.log("authId:", user.authId, "hostId:", hostId, "match:", user.authId === hostId);
 //   const video = videoRef.current;
 //   if (!video) return;
 
 //   if (hasActiveVideo) {
-//     video.srcObject = user.stream;
+//     if (video.srcObject !== user.stream) {
+//       video.srcObject = user.stream;
+//     }
+//     // ✅ Safari requires explicit play() call
+//     video.play().catch(err => {
+//       console.warn("Video play failed:", err);
+//     });
 //   } else {
 //     video.pause();
 //     video.srcObject = null;
@@ -134,31 +154,221 @@ function VideoTile({
 //   }
 // }, [user.stream, hasActiveVideo]);
 
-useEffect(() => {
-  const video = videoRef.current;
-  if (!video) return;
+//   const initials = user.name?.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase() || "?";
+//   const avatarColor = useMemo(() => {
+//     const c = ["#2563eb", "#7c3aed", "#db2777", "#059669", "#d97706", "#0891b2"];
+//     return c[(user.name?.charCodeAt(0) || 0) % c.length];
+//   },[user.name]);
 
-  if (hasActiveVideo) {
-    if (video.srcObject !== user.stream) {
-      video.srcObject = user.stream;
+//   return (
+//     <div
+//       onClick={onClick}
+//       onMouseEnter={() => setHovered(true)}
+//       onMouseLeave={() => setHovered(false)}
+//       style={{
+//         position: "relative",
+//         width: "100%",
+//         height: "100%",
+//         aspectRatio: "16/9",
+//         background: "#0d0d1a",
+//         borderRadius: large ? 10 : 8,
+//         overflow: "hidden",
+//         cursor: onClick ? "pointer" : "default",
+//         flexShrink: 0,
+//         boxShadow: isActive
+//           ? "0 0 0 2px #22c55e, 0 0 20px rgba(34,197,94,0.25)"
+//           : "0 2px 12px rgba(0,0,0,0.5)",
+//         transition: "box-shadow 0.2s ease",
+//       }}
+//     >
+
+
+//       {/* Video or avatar */}
+//       {hasActiveVideo? (
+//         // <video
+//         //   ref={videoRef} autoPlay playsInline muted={user.userId===localUserId}
+//         //   style={{ width: "100%", height: "100%", objectFit, display: "block" }}
+//         // />
+
+//         <video
+//   ref={videoRef}
+//   autoPlay
+//   playsInline
+//   muted={user.userId === localUserId}
+//   webkit-playsinline="true"       // ✅ Safari older versions
+//   x-webkit-airplay="allow"        // ✅ Safari AirPlay compatibility
+//   style={{ width: "100%", height: "100%", objectFit, display: "block" }}
+// />
+//       ) : (
+//         <div style={{
+//           display: "flex", justifyContent: "center", alignItems: "center",
+//           height: "100%",
+//           background: `linear-gradient(145deg, ${avatarColor}1a 0%, #0d0d1a 100%)`,
+//         }}>
+//           <div style={{
+//             width: large ? 80 : compact ? 28 : 44,
+//             height: large ? 80 : compact ? 28 : 44,
+//             borderRadius: "50%", background: avatarColor,
+//             display: "flex", alignItems: "center", justifyContent: "center",
+//             fontSize: large ? 30 : compact ? 11 : 16,
+//             fontWeight: 700, color: "#fff",
+//             fontFamily: "'DM Sans', sans-serif",
+//             boxShadow: `0 0 24px ${avatarColor}55`,
+//           }}>
+//             {initials}
+//           </div>
+//         </div>
+//       )}
+
+//       {/* Active speaker pulse ring */}
+//       {isActive && (
+//         <div style={{
+//           position: "absolute", inset: 0, borderRadius: "inherit",
+//           border: "2px solid #22c55e",
+//           animation: "speakerPulse 1.5s ease-in-out infinite",
+//           pointerEvents: "none",
+//         }} />
+//       )}
+
+//       {/* Bottom gradient for readability */}
+//       <div style={{
+//         position: "absolute", bottom: 0, left: 0, right: 0, height: "48%",
+//         background: "linear-gradient(to top, rgba(0,0,0,0.82) 0%, transparent 100%)",
+//         pointerEvents: "none",
+//       }} />
+
+//       {/* Name */}
+//       <div style={{
+//         position: "absolute", bottom: 7, left: 8,
+//         color: "#fff", fontSize: compact ? 10 : 12,
+//         fontFamily: "'DM Sans', sans-serif", fontWeight: 500,
+//         display: "flex", alignItems: "center", gap: 4,
+//         maxWidth: "calc(100% - 48px)",
+//         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+//       }}>
+
+//     {user.authId === hostId && (
+//       <div className="host-badge">
+//         👑 Host
+//       </div>
+//     )}
+//         {user.isScreenSharing && (
+//           <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#22c55e", display: "inline-block", flexShrink: 0 }} />
+//         )}
+
+
+//         {user.name}
+//       </div>
+
+
+
+
+//       {/* Top-right status badges */}
+//       <div style={{ position: "absolute", top: 7, right: 7, display: "flex", gap: 4 }}>
+//         {user.handRaised   && <div style={iconBadge}><HandIcon /></div>}
+//         {user.isSpotlighted && <div style={{ ...iconBadge, background: "rgba(124,58,237,0.85)" }}><StarIcon /></div>}
+//       </div>
+
+
+// {/* reaction */}
+//       {user.reaction && (
+//   <div
+//     style={{
+//       position: "absolute",
+//       bottom: "35%",
+//       left: "50%",
+//       transform: "translateX(-50%)",
+//       fontSize: large ? 60 : 40,
+//       animation: "floatUp 2.5s ease-out forwards",
+//       pointerEvents: "none",
+//     }}
+//   >
+//     {user.reaction}
+//   </div>
+// )}
+
+//       {/* Mic icon */}
+//       <div style={{
+//         position: "absolute", bottom: 7, right: 7,
+//         background: user.muted ? "rgba(239,68,68,0.22)" : "rgba(0,0,0,0.55)",
+//         borderRadius: "50%", padding: 4,
+//         display: "flex", alignItems: "center", justifyContent: "center",
+//         border: user.muted ? "1px solid rgba(239,68,68,0.45)" : "none",
+//       }}>
+//         {user.muted?<MicOffIcon /> : <MicOnIcon />}
+//       </div>
+
+//       {/* Unpin button */}
+//       {showUnpin && (
+//         <button
+//           onClick={e => { e.stopPropagation(); onUnpin(); }}
+//           style={{
+//             position: "absolute", top: 8, left: 8,
+//             background: "rgba(0,0,0,0.7)", backdropFilter: "blur(6px)",
+//             color: "#fff", border: "1px solid rgba(255,255,255,0.18)",
+//             padding: "4px 10px 4px 8px", borderRadius: 20,
+//             cursor: "pointer", fontSize: 11,
+//             fontFamily: "'DM Sans', sans-serif",
+//             display: "flex", alignItems: "center", gap: 5, fontWeight: 600,
+//           }}
+//         >
+//           <UnpinIcon /> Unpin
+//         </button>
+//       )}
+
+//       {/* Pin hint on hover */}
+//       {onClick && !showUnpin && hovered && (
+//         <div style={{
+//           position: "absolute", top: 8, left: 8,
+//           background: "rgba(0,0,0,0.7)", backdropFilter: "blur(6px)",
+//           borderRadius: 20, padding: "4px 10px 4px 8px",
+//           display: "flex", alignItems: "center", gap: 5,
+//           fontSize: 11, color: "#fff",
+//           fontFamily: "'DM Sans', sans-serif", fontWeight: 600,
+//           pointerEvents: "none",
+//         }}>
+//           <PinIcon /> Pin
+//         </div>
+//       )}
+//     </div>
+//   );
+// }
+
+
+function VideoTile({
+  user, isActive, large, onClick,
+  showUnpin, onUnpin, objectFit = "cover", compact = false, hostId, localUserId
+}) {
+  const videoRef = useRef();
+  const [hovered, setHovered] = useState(false);
+
+  const hasVideoTracks =
+    user.stream &&
+    user.stream.getVideoTracks().length > 0 &&
+    user.stream.getVideoTracks().some(t => t.enabled);
+
+  // ✅ Always assign srcObject regardless — never conditionally
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (user.stream && hasVideoTracks) {
+      if (video.srcObject?.id !== user.stream.id) {
+        video.srcObject = user.stream;
+      }
+      video.play().catch(() => {
+        setTimeout(() => video.play().catch(() => {}), 800);
+      });
+    } else {
+      video.srcObject = null;
     }
-    // ✅ Safari requires explicit play() call
-    video.play().catch(err => {
-      console.warn("Video play failed:", err);
-    });
-  } else {
-    video.pause();
-    video.srcObject = null;
-    video.removeAttribute("src");
-    video.load();
-  }
-}, [user.stream, hasActiveVideo]);
+  }, [user.stream, hasVideoTracks]);
 
   const initials = user.name?.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase() || "?";
   const avatarColor = useMemo(() => {
     const c = ["#2563eb", "#7c3aed", "#db2777", "#059669", "#d97706", "#0891b2"];
     return c[(user.name?.charCodeAt(0) || 0) % c.length];
-  },[user.name]);
+  }, [user.name]);
 
   return (
     <div
@@ -166,40 +376,33 @@ useEffect(() => {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        position: "relative",
-        width: "100%",
-        height: "100%",
-        aspectRatio: "16/9",
-        background: "#0d0d1a",
-        borderRadius: large ? 10 : 8,
-        overflow: "hidden",
-        cursor: onClick ? "pointer" : "default",
-        flexShrink: 0,
+        position: "relative", width: "100%", height: "100%",
+        aspectRatio: "16/9", background: "#0d0d1a",
+        borderRadius: large ? 10 : 8, overflow: "hidden",
+        cursor: onClick ? "pointer" : "default", flexShrink: 0,
         boxShadow: isActive
           ? "0 0 0 2px #22c55e, 0 0 20px rgba(34,197,94,0.25)"
           : "0 2px 12px rgba(0,0,0,0.5)",
         transition: "box-shadow 0.2s ease",
       }}
     >
+      {/* ✅ video ALWAYS mounted — just hidden when no stream */}
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted={user.userId === localUserId}
+        style={{
+          width: "100%", height: "100%",
+          objectFit, display: "block",
+          // ✅ hide with visibility/opacity not conditional render
+          opacity: hasVideoTracks ? 1 : 0,
+          position: "absolute", top: 0, left: 0,
+        }}
+      />
 
-
-      {/* Video or avatar */}
-      {hasActiveVideo? (
-        // <video
-        //   ref={videoRef} autoPlay playsInline muted={user.userId===localUserId}
-        //   style={{ width: "100%", height: "100%", objectFit, display: "block" }}
-        // />
-
-        <video
-  ref={videoRef}
-  autoPlay
-  playsInline
-  muted={user.userId === localUserId}
-  webkit-playsinline="true"       // ✅ Safari older versions
-  x-webkit-airplay="allow"        // ✅ Safari AirPlay compatibility
-  style={{ width: "100%", height: "100%", objectFit, display: "block" }}
-/>
-      ) : (
+      {/* Avatar shown when no video */}
+      {!hasVideoTracks && (
         <div style={{
           display: "flex", justifyContent: "center", alignItems: "center",
           height: "100%",
@@ -230,14 +433,14 @@ useEffect(() => {
         }} />
       )}
 
-      {/* Bottom gradient for readability */}
+      {/* Bottom gradient */}
       <div style={{
         position: "absolute", bottom: 0, left: 0, right: 0, height: "48%",
         background: "linear-gradient(to top, rgba(0,0,0,0.82) 0%, transparent 100%)",
         pointerEvents: "none",
       }} />
 
-      {/* Name */}
+      {/* Name + host badge */}
       <div style={{
         position: "absolute", bottom: 7, left: 8,
         color: "#fff", fontSize: compact ? 10 : 12,
@@ -246,46 +449,33 @@ useEffect(() => {
         maxWidth: "calc(100% - 48px)",
         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
       }}>
-
-    {user.authId === hostId && (
-      <div className="host-badge">
-        👑 Host
-      </div>
-    )}
+        {user.authId === hostId && (
+          <div className="host-badge">👑 Host</div>
+        )}
         {user.isScreenSharing && (
           <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#22c55e", display: "inline-block", flexShrink: 0 }} />
         )}
-
-
         {user.name}
       </div>
 
-
-
-
-      {/* Top-right status badges */}
+      {/* Top-right badges */}
       <div style={{ position: "absolute", top: 7, right: 7, display: "flex", gap: 4 }}>
-        {user.handRaised   && <div style={iconBadge}><HandIcon /></div>}
+        {user.handRaised && <div style={iconBadge}><HandIcon /></div>}
         {user.isSpotlighted && <div style={{ ...iconBadge, background: "rgba(124,58,237,0.85)" }}><StarIcon /></div>}
       </div>
 
-
-{/* reaction */}
+      {/* Reaction */}
       {user.reaction && (
-  <div
-    style={{
-      position: "absolute",
-      bottom: "35%",
-      left: "50%",
-      transform: "translateX(-50%)",
-      fontSize: large ? 60 : 40,
-      animation: "floatUp 2.5s ease-out forwards",
-      pointerEvents: "none",
-    }}
-  >
-    {user.reaction}
-  </div>
-)}
+        <div style={{
+          position: "absolute", bottom: "35%", left: "50%",
+          transform: "translateX(-50%)",
+          fontSize: large ? 60 : 40,
+          animation: "floatUp 2.5s ease-out forwards",
+          pointerEvents: "none",
+        }}>
+          {user.reaction}
+        </div>
+      )}
 
       {/* Mic icon */}
       <div style={{
@@ -295,10 +485,10 @@ useEffect(() => {
         display: "flex", alignItems: "center", justifyContent: "center",
         border: user.muted ? "1px solid rgba(239,68,68,0.45)" : "none",
       }}>
-        {user.muted?<MicOffIcon /> : <MicOnIcon />}
+        {user.muted ? <MicOffIcon /> : <MicOnIcon />}
       </div>
 
-      {/* Unpin button */}
+      {/* Unpin */}
       {showUnpin && (
         <button
           onClick={e => { e.stopPropagation(); onUnpin(); }}
@@ -316,7 +506,7 @@ useEffect(() => {
         </button>
       )}
 
-      {/* Pin hint on hover */}
+      {/* Pin hint */}
       {onClick && !showUnpin && hovered && (
         <div style={{
           position: "absolute", top: 8, left: 8,
