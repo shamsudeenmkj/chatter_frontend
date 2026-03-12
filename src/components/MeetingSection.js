@@ -484,7 +484,7 @@ function toggleCam(cam){
 
     hostId={hostId}  
   localUserId={socketRef.current?.id}
-
+  myAuthId={myAuthId} 
   />
 {/* </div> */}
           </div>
