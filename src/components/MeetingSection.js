@@ -231,12 +231,16 @@ useEffect(() => {
     //     console.error("Signal error:", err);
     //   }
     // });
-socket.on("signal", async ({ from, signal }) => {
+
+    socket.on("signal", async ({ from, signal }) => {
   let peer = peersRef.current[from];
 
-  // ✅ If peer doesn't exist yet, create it first
+  // ✅ No peer yet — queue everything
   if (!peer) {
-    // This handles the case where offer arrives before user-joined
+    if (!pendingCandidatesRef.current[from]) {
+      pendingCandidatesRef.current[from] = [];
+    }
+    pendingCandidatesRef.current[from].push(signal);
     return;
   }
 
@@ -252,37 +256,46 @@ socket.on("signal", async ({ from, signal }) => {
 
       await peer.setRemoteDescription(new RTCSessionDescription(signal));
 
-      // ✅ Flush any queued ICE candidates
-      if (pendingCandidatesRef.current[from]) {
-        for (const candidate of pendingCandidatesRef.current[from]) {
-          try {
-            await peer.addIceCandidate(new RTCIceCandidate(candidate));
-          } catch (e) {
-            console.warn("Queued candidate error:", e);
+      // ✅ Flush queued candidates after remote desc is set
+      const queued = pendingCandidatesRef.current[from] || [];
+      for (const q of queued) {
+        try {
+          if (q.candidate !== undefined) {
+            await peer.addIceCandidate(new RTCIceCandidate(q));
           }
+        } catch (e) {
+          console.warn("Flushing queued candidate failed:", e);
         }
-        pendingCandidatesRef.current[from] = [];
       }
+      pendingCandidatesRef.current[from] = [];
 
       if (signal.type === "offer") {
         await peer.setLocalDescription(await peer.createAnswer());
         socket.emit("signal", { to: from, signal: peer.localDescription });
       }
 
-    } else if (signal.candidate) {
-      // ✅ Queue candidate if remote description not set yet
-      if (!peer.remoteDescription || !peer.remoteDescription.type) {
+    } else if (signal.candidate !== undefined) {
+      // ✅ Queue if remote desc not ready yet
+      if (!peer.remoteDescription?.type) {
         if (!pendingCandidatesRef.current[from]) {
           pendingCandidatesRef.current[from] = [];
         }
         pendingCandidatesRef.current[from].push(signal);
-        console.log("Queued ICE candidate for", from);
       } else {
         await peer.addIceCandidate(new RTCIceCandidate(signal));
       }
     }
+
   } catch (err) {
-    console.error("Signal error:", err);
+    // ✅ Last resort — re-queue instead of crashing
+    if (err.name === "InvalidStateError") {
+      if (!pendingCandidatesRef.current[from]) {
+        pendingCandidatesRef.current[from] = [];
+      }
+      pendingCandidatesRef.current[from].push(signal);
+    } else {
+      console.error("Signal error:", err);
+    }
   }
 });
 
@@ -324,8 +337,8 @@ socket.on("reaction", ({ userId, emoji }) => {
     socket.on("user-left", id => {
       peersRef.current[id]?.close();
       delete peersRef.current[id];
-      setRemoteUsers(prev => prev.filter(u => u.userId !== id));
-        setRemoteUsers(prev => prev.filter(u => u.userId !== id));
+ delete pendingCandidatesRef.current[id]; // ✅ clean queue too
+         setRemoteUsers(prev => prev.filter(u => u.userId !== id));
 
     });
   }
