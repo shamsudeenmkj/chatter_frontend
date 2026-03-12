@@ -51,6 +51,7 @@ const MeetingSection = () => {
   const [mainVideo, setMainVideo] = useState(null);
   const [isSharing, setIsSharing] = useState(false);
 const [hostId, setHostId] = useState(null);
+const pendingCandidatesRef = useRef({}); // ✅ add this with other refs
   // useEffect(() => {
   //   const storedUser = localStorage.getItem("user");
   //   if (!storedUser) return navigate(`/login/${roomId}`);
@@ -178,6 +179,8 @@ useEffect(() => {
 
     Object.values(peersRef.current).forEach(peer => peer.close());
     localStreamRef.current?.getTracks().forEach(t => t.stop());
+      pendingCandidatesRef.current = {}; // ✅ clear all queues
+
     screenStreamRef.current?.getTracks().forEach(t => t.stop());
   }
 
@@ -200,35 +203,88 @@ useEffect(() => {
     
     );
 
-    socket.on("signal", async ({ from, signal }) => {
-      const peer = peersRef.current[from];
-      if (!peer) return;
+    // socket.on("signal", async ({ from, signal }) => {
+    //   const peer = peersRef.current[from];
+    //   if (!peer) return;
 
-      try {
-        if (signal.type) {
-          const collision =
-            signal.type === "offer" &&
-            (makingOfferRef.current[from] || peer.signalingState !== "stable");
+    //   try {
+    //     if (signal.type) {
+    //       const collision =
+    //         signal.type === "offer" &&
+    //         (makingOfferRef.current[from] || peer.signalingState !== "stable");
 
-          const polite = socket.id > from;
-          ignoreOfferRef.current[from] = !polite && collision;
-          if (ignoreOfferRef.current[from]) return;
+    //       const polite = socket.id > from;
+    //       ignoreOfferRef.current[from] = !polite && collision;
+    //       if (ignoreOfferRef.current[from]) return;
 
-          await peer.setRemoteDescription(signal);
+    //       await peer.setRemoteDescription(signal);
 
-          if (signal.type === "offer") {
-            await peer.setLocalDescription(await peer.createAnswer());
-            socket.emit("signal", { to: from, signal: peer.localDescription });
+    //       if (signal.type === "offer") {
+    //         await peer.setLocalDescription(await peer.createAnswer());
+    //         socket.emit("signal", { to: from, signal: peer.localDescription });
+    //       }
+
+    //     } else if (signal.candidate) {
+    //       await peer.addIceCandidate(signal);
+    //     }
+    //   } catch (err) {
+    //     console.error("Signal error:", err);
+    //   }
+    // });
+socket.on("signal", async ({ from, signal }) => {
+  let peer = peersRef.current[from];
+
+  // ✅ If peer doesn't exist yet, create it first
+  if (!peer) {
+    // This handles the case where offer arrives before user-joined
+    return;
+  }
+
+  try {
+    if (signal.type === "offer" || signal.type === "answer") {
+      const collision =
+        signal.type === "offer" &&
+        (makingOfferRef.current[from] || peer.signalingState !== "stable");
+
+      const polite = socket.id > from;
+      ignoreOfferRef.current[from] = !polite && collision;
+      if (ignoreOfferRef.current[from]) return;
+
+      await peer.setRemoteDescription(new RTCSessionDescription(signal));
+
+      // ✅ Flush any queued ICE candidates
+      if (pendingCandidatesRef.current[from]) {
+        for (const candidate of pendingCandidatesRef.current[from]) {
+          try {
+            await peer.addIceCandidate(new RTCIceCandidate(candidate));
+          } catch (e) {
+            console.warn("Queued candidate error:", e);
           }
-
-        } else if (signal.candidate) {
-          await peer.addIceCandidate(signal);
         }
-      } catch (err) {
-        console.error("Signal error:", err);
+        pendingCandidatesRef.current[from] = [];
       }
-    });
 
+      if (signal.type === "offer") {
+        await peer.setLocalDescription(await peer.createAnswer());
+        socket.emit("signal", { to: from, signal: peer.localDescription });
+      }
+
+    } else if (signal.candidate) {
+      // ✅ Queue candidate if remote description not set yet
+      if (!peer.remoteDescription || !peer.remoteDescription.type) {
+        if (!pendingCandidatesRef.current[from]) {
+          pendingCandidatesRef.current[from] = [];
+        }
+        pendingCandidatesRef.current[from].push(signal);
+        console.log("Queued ICE candidate for", from);
+      } else {
+        await peer.addIceCandidate(new RTCIceCandidate(signal));
+      }
+    }
+  } catch (err) {
+    console.error("Signal error:", err);
+  }
+});
 
     socket.on("audio-toggle", ({ userId, muted }) => {
       
@@ -269,6 +325,8 @@ socket.on("reaction", ({ userId, emoji }) => {
       peersRef.current[id]?.close();
       delete peersRef.current[id];
       setRemoteUsers(prev => prev.filter(u => u.userId !== id));
+        setRemoteUsers(prev => prev.filter(u => u.userId !== id));
+
     });
   }
 
