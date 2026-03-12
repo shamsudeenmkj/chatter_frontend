@@ -212,7 +212,7 @@ useEffect(() => {
         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
       }}>
 
-    {user.userId === hostId && (
+    {user.authId === hostId && (
       <div className="host-badge">
         👑 Host
       </div>
@@ -443,7 +443,7 @@ function LayoutBadge({ mode }) {
                    The ResizeObserver inside GalleryLayout
                    automatically recalculates the grid.
 ========================================================= */
-export default function SubPrimeVideoCard({ userList = [], activePanel = null ,hostId,localUserId}) {
+export default function SubPrimeVideoCard({ userList = [], activePanel = null ,hostId,localUserId }) {
 
   // console.log("userList=====123>",userList)
 

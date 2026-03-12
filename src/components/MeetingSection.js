@@ -52,6 +52,8 @@ const MeetingSection = () => {
   const [isSharing, setIsSharing] = useState(false);
 const [hostId, setHostId] = useState(null);
 const pendingCandidatesRef = useRef({}); // ✅ add this with other refs
+const [myAuthId, setMyAuthId] = useState(null);
+
   // useEffect(() => {
   //   const storedUser = localStorage.getItem("user");
   //   if (!storedUser) return navigate(`/login/${roomId}`);
@@ -111,6 +113,7 @@ useEffect(() => {
 
       const userName = authData.user.name;
       setName(userName);
+setMyAuthId(authData.user.id);  // ✅ save your own authId
 
       // ── 2. Meeting state (mic/cam from DB) ───────────────
       const meetingRes = await fetch(`${SIGNALING_SERVER}/meeting-state/${roomId}`, {
@@ -191,14 +194,14 @@ useEffect(() => {
     socket.emit("join-room", { roomId, name: userName,muted:micMuted});
 
     socket.on("all-users", ({users,host}) => {
-      users.forEach(u => u.userId !== socket.id && createPeer(u.userId, u.name,u.muted));
+      users.forEach(u => u.userId !== socket.id && createPeer(u.userId, u.name,u.muted,u.authId));
        setHostId(host);
     });
 
     socket.on("user-joined", u =>{
 
       console.log("userJoined",u)
-      createPeer(u.userId, u.name,u.muted)
+      createPeer(u.userId, u.name,u.muted,u.authId)
     }
     
     );
@@ -343,7 +346,7 @@ socket.on("reaction", ({ userId, emoji }) => {
     });
   }
 
-function createPeer(userId, userName,micMuted) {
+function createPeer(userId, userName,micMuted,authId) {
   if (peersRef.current[userId]) return;
 
   const peer = new RTCPeerConnection(ICE_SERVERS);
@@ -352,7 +355,7 @@ function createPeer(userId, userName,micMuted) {
   setRemoteUsers(prev => {
     if (prev.find(u => u.userId === userId)) return prev;
     console.log("prev ====>",prev)
-    return [...prev, { userId, name: userName, stream: null ,muted:micMuted}];
+    return [...prev, { userId, name: userName, stream: null ,muted:micMuted,authId}];
   });
 
   // Add audio
@@ -474,7 +477,7 @@ function toggleCam(cam){
   style={{ transition: "all 0.35s ease", height: "calc(100vh - 130px)" }}>
   <SubPrimeVideoCard
     userList={[
-      { userId: socketRef.current?.id, name, stream: mainVideo, muted:isMicMuted },
+      { userId: socketRef.current?.id, name, stream: mainVideo, muted:isMicMuted,  authId: myAuthId},
       ...remoteUsers
     ]}
     activePanel={activePanel}
