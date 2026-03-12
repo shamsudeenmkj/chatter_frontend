@@ -405,6 +405,19 @@ if (screenStreamRef.current) {
     );
   };
 
+   const assignStream = () => {
+    setRemoteUsers(prev =>
+      prev.map(u => u.userId === userId ? { ...u, stream } : u)
+    );
+  };
+
+  if (stream.getTracks().some(t => t.readyState === "live")) {
+    assignStream();
+  } else {
+    // ✅ Retry after short delay for Safari
+    setTimeout(assignStream, 500);
+  }
+
   setRemoteUsers(prev =>
     prev.map(u =>
       u.userId === userId

@@ -105,25 +105,47 @@ function VideoTile({
 }) {
   const videoRef = useRef();
   const [hovered, setHovered] = useState(false);
+  // const hasActiveVideo =
+  // user.stream &&
+  // user.stream.getVideoTracks().some(
+  //   track => track.readyState === "live" && track.enabled
+  // );
+
   const hasActiveVideo =
   user.stream &&
-  user.stream.getVideoTracks().some(
-    track => track.readyState === "live" && track.enabled
-  );
+  user.stream.getVideoTracks().length > 0 &&
+  user.stream.getVideoTracks().some(track => track.enabled);
 
-  // useEffect(() => {
-  //   if (videoRef.current) videoRef.current.srcObject = user.stream || null;
-  // }, [user.stream]);
+
+// useEffect(() => {
+
+//   // In VideoTile, temporarily add:
+// console.log("authId:", user.authId, "hostId:", hostId, "match:", user.authId === hostId);
+//   const video = videoRef.current;
+//   if (!video) return;
+
+//   if (hasActiveVideo) {
+//     video.srcObject = user.stream;
+//   } else {
+//     video.pause();
+//     video.srcObject = null;
+//     video.removeAttribute("src");
+//     video.load();
+//   }
+// }, [user.stream, hasActiveVideo]);
 
 useEffect(() => {
-
-  // In VideoTile, temporarily add:
-console.log("authId:", user.authId, "hostId:", hostId, "match:", user.authId === hostId);
   const video = videoRef.current;
   if (!video) return;
 
   if (hasActiveVideo) {
-    video.srcObject = user.stream;
+    if (video.srcObject !== user.stream) {
+      video.srcObject = user.stream;
+    }
+    // ✅ Safari requires explicit play() call
+    video.play().catch(err => {
+      console.warn("Video play failed:", err);
+    });
   } else {
     video.pause();
     video.srcObject = null;
@@ -163,10 +185,20 @@ console.log("authId:", user.authId, "hostId:", hostId, "match:", user.authId ===
 
       {/* Video or avatar */}
       {hasActiveVideo? (
+        // <video
+        //   ref={videoRef} autoPlay playsInline muted={user.userId===localUserId}
+        //   style={{ width: "100%", height: "100%", objectFit, display: "block" }}
+        // />
+
         <video
-          ref={videoRef} autoPlay playsInline muted={user.userId===localUserId}
-          style={{ width: "100%", height: "100%", objectFit, display: "block" }}
-        />
+  ref={videoRef}
+  autoPlay
+  playsInline
+  muted={user.userId === localUserId}
+  webkit-playsinline="true"       // ✅ Safari older versions
+  x-webkit-airplay="allow"        // ✅ Safari AirPlay compatibility
+  style={{ width: "100%", height: "100%", objectFit, display: "block" }}
+/>
       ) : (
         <div style={{
           display: "flex", justifyContent: "center", alignItems: "center",
