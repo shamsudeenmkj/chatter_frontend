@@ -190,14 +190,14 @@ useEffect(() => {
     socket.emit("join-room", { roomId, name: userName,muted:micMuted});
 
     socket.on("all-users", ({users,host}) => {
-      users.forEach(u => u.userId !== socket.id && createPeer(u.userId, u.name,u.muted));
+      users.forEach(u => u.userId !== socket.id && createPeer(u.userId, u.name,u.muted,u.authId));
        setHostId(host);
     });
 
     socket.on("user-joined", u =>{
 
       console.log("userJoined",u)
-      createPeer(u.userId, u.name,u.muted)
+      createPeer(u.userId, u.name,u.muted,u.authId)
     }
     
     );
