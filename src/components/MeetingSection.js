@@ -30,6 +30,7 @@ const MeetingSection = () => {
   const [isMicMuted, setIsMicMuted] = useState(false);
     const [isCamMuted, setIsCamMuted] = useState(false);
 
+const [myAuthId, setMyAuthId] = useState(null);
 
   const [activePanel, setActivePanel] = useState(null);
 
@@ -110,6 +111,7 @@ useEffect(() => {
 
       const userName = authData.user.name;
       setName(userName);
+      setMyAuthId(authData.user.id);
 
       // ── 2. Meeting state (mic/cam from DB) ───────────────
       const meetingRes = await fetch(`${SIGNALING_SERVER}/meeting-state/${roomId}`, {
@@ -403,14 +405,14 @@ function toggleCam(cam){
   style={{ transition: "all 0.35s ease", height: "calc(100vh - 130px)" }}>
   <SubPrimeVideoCard
     userList={[
-      { userId: socketRef.current?.id, name, stream: mainVideo, muted:isMicMuted },
+      { userId: socketRef.current?.id, name, stream: mainVideo, muted:isMicMuted,authId: myAuthId},
       ...remoteUsers
     ]}
     activePanel={activePanel}
 
     hostId={hostId}  
   localUserId={socketRef.current?.id}
-
+  myAuthId={myAuthId} 
   />
 {/* </div> */}
           </div>
