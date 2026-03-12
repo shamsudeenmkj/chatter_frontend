@@ -30,7 +30,6 @@ const MeetingSection = () => {
   const [isMicMuted, setIsMicMuted] = useState(false);
     const [isCamMuted, setIsCamMuted] = useState(false);
 
-const [myAuthId, setMyAuthId] = useState(null);
 
   const [activePanel, setActivePanel] = useState(null);
 
@@ -111,7 +110,6 @@ useEffect(() => {
 
       const userName = authData.user.name;
       setName(userName);
-      setMyAuthId(authData.user.id);
 
       // ── 2. Meeting state (mic/cam from DB) ───────────────
       const meetingRes = await fetch(`${SIGNALING_SERVER}/meeting-state/${roomId}`, {
@@ -190,14 +188,14 @@ useEffect(() => {
     socket.emit("join-room", { roomId, name: userName,muted:micMuted});
 
     socket.on("all-users", ({users,host}) => {
-      users.forEach(u => u.userId !== socket.id && createPeer(u.userId, u.name,u.muted,u.authId));
+      users.forEach(u => u.userId !== socket.id && createPeer(u.userId, u.name,u.muted));
        setHostId(host);
     });
 
     socket.on("user-joined", u =>{
 
       console.log("userJoined",u)
-      createPeer(u.userId, u.name,u.muted,u.authId)
+      createPeer(u.userId, u.name,u.muted)
     }
     
     );
@@ -274,7 +272,7 @@ socket.on("reaction", ({ userId, emoji }) => {
     });
   }
 
-function createPeer(userId, userName,micMuted,authId) {
+function createPeer(userId, userName,micMuted) {
   if (peersRef.current[userId]) return;
 
   const peer = new RTCPeerConnection(ICE_SERVERS);
@@ -283,7 +281,7 @@ function createPeer(userId, userName,micMuted,authId) {
   setRemoteUsers(prev => {
     if (prev.find(u => u.userId === userId)) return prev;
     console.log("prev ====>",prev)
-    return [...prev, { userId, name: userName, stream: null ,muted:micMuted,authId}];
+    return [...prev, { userId, name: userName, stream: null ,muted:micMuted}];
   });
 
   // Add audio
@@ -405,14 +403,14 @@ function toggleCam(cam){
   style={{ transition: "all 0.35s ease", height: "calc(100vh - 130px)" }}>
   <SubPrimeVideoCard
     userList={[
-      { userId: socketRef.current?.id, name, stream: mainVideo, muted:isMicMuted,authId: myAuthId},
+      { userId: socketRef.current?.id, name, stream: mainVideo, muted:isMicMuted },
       ...remoteUsers
     ]}
     activePanel={activePanel}
 
     hostId={hostId}  
   localUserId={socketRef.current?.id}
-  myAuthId={myAuthId} 
+
   />
 {/* </div> */}
           </div>

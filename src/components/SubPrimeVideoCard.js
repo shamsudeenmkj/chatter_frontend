@@ -212,7 +212,7 @@ useEffect(() => {
         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
       }}>
 
-    {user.authId === hostId &&(
+    {user.userId === hostId && (
       <div className="host-badge">
         👑 Host
       </div>
