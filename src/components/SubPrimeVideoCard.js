@@ -116,6 +116,9 @@ function VideoTile({
   // }, [user.stream]);
 
 useEffect(() => {
+
+  // In VideoTile, temporarily add:
+console.log("authId:", user.authId, "hostId:", hostId, "match:", user.authId === hostId);
   const video = videoRef.current;
   if (!video) return;
 
