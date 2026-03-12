@@ -460,6 +460,15 @@ peer.ontrack = e => {
     }
   };
 
+  // In createPeer, add this:
+peer.oniceconnectionstatechange = () => {
+  console.log(`ICE state [${userId}]:`, peer.iceConnectionState);
+};
+
+peer.onconnectionstatechange = () => {
+  console.log(`Connection state [${userId}]:`, peer.connectionState);
+};
+
   // ✅ FORCE SCREEN TRACK IF SHARING IS ACTIVE
   // setTimeout(() => {
   //   if (screenStreamRef.current) {
