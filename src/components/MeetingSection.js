@@ -274,7 +274,7 @@ socket.on("reaction", ({ userId, emoji }) => {
     });
   }
 
-function createPeer(userId, userName,micMuted) {
+function createPeer(userId, userName,micMuted,authId) {
   if (peersRef.current[userId]) return;
 
   const peer = new RTCPeerConnection(ICE_SERVERS);
@@ -283,7 +283,7 @@ function createPeer(userId, userName,micMuted) {
   setRemoteUsers(prev => {
     if (prev.find(u => u.userId === userId)) return prev;
     console.log("prev ====>",prev)
-    return [...prev, { userId, name: userName, stream: null ,muted:micMuted}];
+    return [...prev, { userId, name: userName, stream: null ,muted:micMuted,authId}];
   });
 
   // Add audio
