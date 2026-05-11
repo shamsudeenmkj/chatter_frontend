@@ -23,7 +23,9 @@ import MainCamOff from "../assets/videoCloseIcon.svg";
 
 const NavigationControl = ({isMicMuted,isCamMuted,toggleMic,toggleCam,screenStreamRef,isSharing,peersRef,setIsSharing,setMainVideo,localStreamRef,roomId,socketRef, activePanel,
   onToggleChat,
-  onToggleParticipants
+  onToggleParticipants,
+  waitingCount = 0,  // ✅ ADD THIS
+  onToggleWaiting,   // ✅ ADD THIS
 }) => {
 
     //  const [mainMic, setMic] = useState(isMicMuted);
@@ -263,7 +265,7 @@ function handleReaction(emoji) {
                       {/* <button className='iconBtn'>
                           <img src={MoreIcon} alt="More Icon" />
                       </button> */}
-                      <div className="iconBtnSubPr dropup">
+                      {/* <div className="iconBtnSubPr dropup">
   <button
     type="button"
     className="iconBtn dropdown-toggle"
@@ -303,6 +305,92 @@ function handleReaction(emoji) {
         <div>
             <img src={PollIcon} alt="Poll Icon" />
         </div>Poll</button>
+    </li>
+  </ul>
+</div> */}
+
+{/* Replace your existing More icon button with this: */}
+<div className="iconBtnSubPr dropup">
+  <button
+    type="button"
+    className="iconBtn dropdown-toggle"
+    data-bs-toggle="dropdown"
+    aria-expanded="false"
+    style={{ position: 'relative' }}
+  >
+    <img src={MoreIcon} alt="More Icon" />
+
+    {/* ✅ Red badge — only shows when someone is waiting */}
+    {waitingCount > 0 && (
+      <span style={{
+        position: 'absolute',
+        top: -4, right: -4,
+        background: '#EF4444',
+        color: '#fff',
+        borderRadius: '50%',
+        width: 18, height: 18,
+        fontSize: 10, fontWeight: 700,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        border: '2px solid #fff',
+        lineHeight: 1,
+        pointerEvents: 'none',
+        fontFamily: 'Montserrat, sans-serif',
+      }}>
+        {waitingCount > 9 ? '9+' : waitingCount}
+      </span>
+    )}
+  </button>
+
+  <ul className="dropdown-menu">
+    <li>
+      <button className="dropdown-item">
+        <div><img src={RaiseHandIcon} alt="Raise Hand Icon" /></div>
+        Raise Hand
+      </button>
+    </li>
+
+    {/* ✅ Admit button with count badge */}
+    <li>
+      <button
+        className="dropdown-item"
+        onClick={onToggleWaiting}
+        style={{ position: 'relative' }}
+      >
+        <div><img src={AdmitIcon} alt="Admit Icon" /></div>
+        Admit Participants
+        {waitingCount > 0 && (
+          <span style={{
+            marginLeft: 8,
+            background: '#EF4444',
+            color: '#fff',
+            borderRadius: 20,
+            padding: '1px 7px',
+            fontSize: 11,
+            fontWeight: 700,
+          }}>
+            {waitingCount}
+          </span>
+        )}
+      </button>
+    </li>
+
+    <li className='mobileController'>
+      <button className="dropdown-item" onClick={onToggleParticipants}>
+        <div><img src={Participants} alt="Participants Icon" /></div>
+        Participants
+      </button>
+    </li>
+    <li>
+      <button className="dropdown-item" onClick={onToggleChat}>
+        <div><img src={ChatIcon} alt="Chat Icon" /></div>
+        Chats
+      </button>
+    </li>
+    <li className='mobileController'>
+      <button className="dropdown-item">
+        <div><img src={PollIcon} alt="Poll Icon" /></div>
+        Poll
+      </button>
     </li>
   </ul>
 </div>

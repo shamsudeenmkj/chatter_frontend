@@ -4,12 +4,14 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 import SignInForm from "./SignInForm";
 import SignUpForm from './SignUpForm';
 import { Link, useNavigate } from "react-router-dom";
-
+ 
 
 function LoginSideBar(name) {
   const [show, setShow] = useState(false);
   // New
   const [currentForm,setCurrentForm] = useState("signin");
+
+  
 
 
   return (

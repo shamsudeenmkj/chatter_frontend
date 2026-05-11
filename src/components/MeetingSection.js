@@ -29,6 +29,7 @@ const ICE_SERVERS = {
 const MeetingSection = () => {
   const [isMicMuted, setIsMicMuted] = useState(false);
     const [isCamMuted, setIsCamMuted] = useState(false);
+const [waitingRoom, setWaitingRoom] = useState([]);
 
 
   const [activePanel, setActivePanel] = useState(null);
@@ -56,7 +57,7 @@ const [myAuthId, setMyAuthId] = useState(null);
 
   // useEffect(() => {
   //   const storedUser = localStorage.getItem("user");
-  //   if (!storedUser) return navigate(`/login/${roomId}`);
+  //   if (!storedUser) return navigate(`/join/${roomId}`);
 
   //   const userName = JSON.parse(storedUser).name;
   //   setName(userName);
@@ -100,7 +101,7 @@ const [myAuthId, setMyAuthId] = useState(null);
 
 useEffect(() => {
   const token = localStorage.getItem("token");
-  if (!token) return navigate(`/login/${roomId}`);
+  if (!token) return navigate(`/join/${roomId}`);
 
   async function initRoom() {
     try {
@@ -109,7 +110,7 @@ useEffect(() => {
         headers: { Authorization: `Bearer ${token}` }
       });
       const authData = await authRes.json();
-      if (!authData.success) return navigate(`/login/${roomId}`);
+      if (!authData.success) return navigate(`/join/${roomId}`);
 
       const userName = authData.user.name;
       setName(userName);
@@ -161,7 +162,7 @@ setMyAuthId(authData.user.id);  // ✅ save your own authId
 
     } catch (err) {
       console.error("Room init failed:", err);
-      navigate(`/login/${roomId}`);
+      navigate(`/join/${roomId}`);
     }
   }
 
@@ -193,10 +194,14 @@ setMyAuthId(authData.user.id);  // ✅ save your own authId
 
     socket.emit("join-room", { roomId, name: userName,muted:micMuted});
 
-    socket.on("all-users", ({users,host}) => {
-      users.forEach(u => u.userId !== socket.id && createPeer(u.userId, u.name,u.muted,u.authId));
-       setHostId(host);
+  socket.on('all-users', ({ users, host, waitingRoom: wr }) => {
+    setHostId(host?.toString());
+    setWaitingRoom(wr || []);
+    if (wr?.length > 0) setActivePanel('waiting'); // ✅ auto open waiting panel
+    users.forEach(u => {
+      if (u.userId !== socket.id) createPeer(u.userId, u.name, u.muted, u.authId?.toString());
     });
+  })
 
     socket.on("user-joined", u =>{
 
@@ -335,6 +340,11 @@ socket.on("reaction", ({ userId, emoji }) => {
       )
     );
   },4000);
+});
+
+// In setupAndJoin, listen for waiting room updates:
+socket.on('waiting-room-update', ({ waitingRoom: wr }) => {
+  setWaitingRoom(wr || []);
 });
 
     socket.on("user-left", id => {
@@ -536,9 +546,146 @@ function toggleCam(cam){
 {activePanel && (
   <div className="col-lg-4 col-xl-4 col-xxl-3"
     style={{ height: "calc(100vh - 130px)", animation: "slideInRight 0.35s ease" }}>
-    {activePanel === "chat" && <ChatCard userList={remoteUsers}   onToggleChat={() => setActivePanel(p => p === "chat" ? null : "chat")}
-/>}
-    {activePanel === "participants" && <Participants />}
+
+    {/* Chat */}
+    {activePanel === "chat" && (
+      <ChatCard
+  userList={remoteUsers}
+  onToggleChat={() => setActivePanel(p => p === "chat" ? null : "chat")}
+  hostId={hostId}/>
+    )}
+
+    {/* Participants */}
+    {activePanel === "participants" && (
+      <Participants count={remoteUsers.length + 1} />
+    )}
+
+    {/* Waiting Room */}
+    {activePanel === "waiting" && (
+      <div style={{
+        height: "100%", display: "flex", flexDirection: "column",
+        background: "#111118", borderLeft: "1px solid rgba(255,255,255,0.08)",
+        fontFamily: "Montserrat, sans-serif"
+      }}>
+        {/* Header */}
+        <div style={{
+          padding: "16px 20px", borderBottom: "1px solid rgba(255,255,255,0.08)",
+          display: "flex", alignItems: "center", justifyContent: "space-between"
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{
+              width: 36, height: 36, borderRadius: 10,
+              background: "rgba(245,158,11,0.15)",
+              display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18
+            }}>⏳</div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#f1f5f9" }}>Waiting Room</div>
+              <div style={{ fontSize: 11, color: "#64748b" }}>{waitingRoom.length} waiting</div>
+            </div>
+          </div>
+          <button onClick={() => setActivePanel(null)} style={{
+            background: "rgba(255,255,255,0.06)", border: "none", color: "#94a3b8",
+            width: 28, height: 28, borderRadius: "50%", cursor: "pointer", fontSize: 16,
+            display: "flex", alignItems: "center", justifyContent: "center"
+          }}>×</button>
+        </div>
+
+        {/* Admit All / Deny All */}
+        {waitingRoom.length > 1 && (
+          <div style={{
+            padding: "12px 16px", borderBottom: "1px solid rgba(255,255,255,0.06)",
+            display: "flex", gap: 8
+          }}>
+            <button
+              onClick={() => waitingRoom.forEach(u => socketRef.current?.emit('admit-user', { roomId, userId: u.userId }))}
+              style={{
+                flex: 1, padding: "8px", borderRadius: 8,
+                border: "1px solid rgba(34,197,94,0.3)",
+                background: "rgba(34,197,94,0.1)", color: "#22c55e",
+                fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "Montserrat, sans-serif"
+              }}>✅ Admit All</button>
+            <button
+              onClick={() => waitingRoom.forEach(u => socketRef.current?.emit('reject-user', { roomId, userId: u.userId }))}
+              style={{
+                flex: 1, padding: "8px", borderRadius: 8,
+                border: "1px solid rgba(239,68,68,0.3)",
+                background: "rgba(239,68,68,0.1)", color: "#ef4444",
+                fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "Montserrat, sans-serif"
+              }}>❌ Deny All</button>
+          </div>
+        )}
+
+        {/* User list */}
+        <div style={{ flex: 1, overflowY: "auto", padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+          {waitingRoom.length === 0 ? (
+            <div style={{ textAlign: "center", marginTop: 60 }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>🚪</div>
+              <div style={{ fontSize: 13, color: "#64748b" }}>No one is waiting</div>
+            </div>
+          ) : waitingRoom.map((u, i) => {
+            const colors = ["#6366f1","#06b6d4","#8b5cf6","#f59e0b","#ec4899","#10b981"];
+            const bg = colors[u.name?.charCodeAt(0) % colors.length];
+            const initials = u.name?.split(" ").map(n => n[0]).join("").slice(0,2).toUpperCase() || "?";
+            return (
+              <div key={u.userId} style={{
+                background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
+                borderRadius: 12, padding: "12px 14px",
+                animation: `fadeInUp 0.3s ease ${i * 0.05}s both`
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                  <div style={{
+                    width: 38, height: 38, borderRadius: "50%", background: bg,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 14, fontWeight: 700, color: "#fff", flexShrink: 0
+                  }}>{initials}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "#f1f5f9", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {u.name}
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2 }}>
+                      <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#f59e0b", animation: "pulse 1.5s infinite" }} />
+                      <span style={{ fontSize: 11, color: "#94a3b8" }}>Waiting for approval</span>
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={() => socketRef.current?.emit('admit-user', { roomId, userId: u.userId })}
+                    style={{
+                      flex: 1, padding: "8px 0", borderRadius: 8,
+                      border: "1px solid rgba(34,197,94,0.4)",
+                      background: "rgba(34,197,94,0.12)", color: "#22c55e",
+                      fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "Montserrat, sans-serif",
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 5
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = "rgba(34,197,94,0.22)"}
+                    onMouseLeave={e => e.currentTarget.style.background = "rgba(34,197,94,0.12)"}
+                  >✓ Admit</button>
+                  <button
+                    onClick={() => socketRef.current?.emit('reject-user', { roomId, userId: u.userId })}
+                    style={{
+                      flex: 1, padding: "8px 0", borderRadius: 8,
+                      border: "1px solid rgba(239,68,68,0.3)",
+                      background: "rgba(239,68,68,0.08)", color: "#ef4444",
+                      fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "Montserrat, sans-serif",
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 5
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = "rgba(239,68,68,0.18)"}
+                    onMouseLeave={e => e.currentTarget.style.background = "rgba(239,68,68,0.08)"}
+                  >✕ Deny</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <style>{`
+          @keyframes fadeInUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+          @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+        `}</style>
+      </div>
+    )}
+
   </div>
 )}
         </div>
@@ -566,7 +713,8 @@ isCamMuted={isCamMuted}
               activePanel={activePanel}
   onToggleChat={() => setActivePanel(p => p === "chat" ? null : "chat")}
   onToggleParticipants={() => setActivePanel(p => p === "participants" ? null : "participants")}
-
+ waitingCount={waitingRoom.length}           
+  onToggleWaiting={() => setActivePanel(p => p === 'waiting' ? null : 'waiting')}
               
               />
               <LinkSharingCard /> 

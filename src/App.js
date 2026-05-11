@@ -9,6 +9,18 @@ import ReJoinRoom from './login/reJoinRoom';
 import LandingPage from './components/LandingPage';
 import LoginSideBar from './components/LoginSideBar';
 import JoinRoom from './components/JoinRoom';
+import CreateMeeting from './components/CreateMeeting';
+import MyMeetings from './components/MyMeetings';
+import { Navigate, useParams } from 'react-router-dom';
+
+const JoinRedirect = () => {
+  const { roomId } = useParams();
+  const token = localStorage.getItem('token');
+  if (token) {
+    return <Navigate to={`/join-room?roomId=${roomId}`} replace />;
+  }
+  return <Navigate to={`/?roomId=${roomId}&openSignIn=true`} replace />;
+};
 
 const App = () => {
   const [user, setUser] = useState(null);
@@ -24,13 +36,15 @@ const App = () => {
           <Routes>
             <Route path="/" element={<LandingPage/>} />
             {/* <Route path="/" element={<Login onJoin={handleJoin} />} /> */}
-            <Route path="/create-room" element={<CreateRoom />} />
+            {/* <Route path="/create-room" element={<CreateRoom />} /> */}
             <Route path="/join-room" element={<JoinRoom/>} />
 
             <Route path="/room/:roomId" element={<MeetingSection />} />
-            <Route path="/login/:getRoomId" element={<ReJoinRoom />} />
-
+<Route path="/join/:roomId" element={<JoinRedirect />} />
            <Route path='/guest-login' element={<Login onJoin={handleJoin}/>}/>
+
+<Route path="/create-room" element={<CreateMeeting/>} />
+<Route path="/my-meetings" element={<MyMeetings />} />
           </Routes>
         </BrowserRouter>
       </div>
@@ -39,3 +53,6 @@ const App = () => {
 };
 
 export default App;
+
+// Add this new component above the App component
+
