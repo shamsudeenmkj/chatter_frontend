@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import Footer from './Footer';
 import MainMicOff from "../assets/micCloseIcon.svg";
 import MainCamOff from "../assets/videoCloseIcon.svg";
@@ -8,19 +8,16 @@ import LandingLogo from '../assets/CMeetingLandingLogo.png';
 import { useNavigate } from 'react-router-dom';
 import CopyIcon from '../assets/copyIcon.svg';
 import { useSocket } from '../sockets/socket';
-
 import { useLocation } from 'react-router-dom';
 
-// Inside JoinRoom component:
-
-// const SIGNALING_SERVER =  'http://localhost:8000';
+// const SIGNALING_SERVER = 'http://localhost:8000';
 const SIGNALING_SERVER = "https://chatter-backend-4i7g.onrender.com";
 
 const JoinRoom = () => {
   const navigate = useNavigate();
   const socketRef = useSocket();
   const localStreamRef = useRef(null);
-  const roomIdRef = useRef(""); // store roomId for cancel
+  const roomIdRef = useRef("");
 
   const [isMicMuted, setIsMicMuted] = useState(false);
   const [isCamMuted, setIsCamMuted] = useState(false);
@@ -28,14 +25,24 @@ const JoinRoom = () => {
   const [error, setError] = useState("");
   const [waitingStatus, setWaitingStatus] = useState(null); // null | 'waiting' | 'rejected'
   const [loading, setLoading] = useState(false);
-const location = useLocation();
 
-const isPreFilled = !!new URLSearchParams(location.search).get('roomId');
+  // ✅ FIX 1: Use a ref to track loading state inside callbacks/timeouts.
+  // The old code used `if (loading)` inside setTimeout, but `loading` is a
+  // stale closure — it's always `false` at capture time (before setLoading(true)
+  // takes effect). A ref always reflects the latest value.
+  const loadingRef = useRef(false);
+  const setLoadingBoth = (val) => {
+    loadingRef.current = val;
+    setLoading(val);
+  };
+
+  const location = useLocation();
+  const isPreFilled = !!new URLSearchParams(location.search).get('roomId');
 
   const [roomLink, setRoomLink] = useState(() => {
-  const params = new URLSearchParams(location.search);  // ← reads ?roomId=xxxx
-  return params.get('roomId') || '';
-});
+    const params = new URLSearchParams(location.search);
+    return params.get('roomId') || '';
+  });
 
   /* ── Init ───────────────────────────────────────────────────────────────── */
   useEffect(() => {
@@ -51,20 +58,23 @@ const isPreFilled = !!new URLSearchParams(location.search).get('roomId');
         if (!data.success) return navigate("/");
         setUser(data.user);
 
-        // Start media preview
         let stream = null;
         let micMuted = false, camMuted = false;
+
         try {
           stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        } catch {
+        } catch (err) {
+          console.error('getUserMedia error:', err.name, err.message);
           try {
             stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             camMuted = true;
-          } catch {
+          } catch (err2) {
+            console.error('audio only error:', err2.name, err2.message);
             try {
               stream = await navigator.mediaDevices.getUserMedia({ video: true });
               micMuted = true;
-            } catch {
+            } catch (err3) {
+              console.error('video only error:', err3.name, err3.message);
               micMuted = true; camMuted = true;
             }
           }
@@ -105,18 +115,20 @@ const isPreFilled = !!new URLSearchParams(location.search).get('roomId');
 
   /* ── Cancel waiting ──────────────────────────────────────────────────────── */
   const handleCancel = () => {
-    const socket = socketRef.current;
-    if (socket) {
-      socket.off("waiting-for-approval");
-      socket.off("join-approved");
-      socket.off("join-rejected");
-      socket.off("all-users");
-      socket.off("room-not-found");
-    }
-    setWaitingStatus(null);
-    setRoomLink("");
-    setLoading(false);
-  };
+  const socket = socketRef.current;
+  if (socket) {
+    // Tell server to remove this user from waiting room
+    socket.emit('leave-waiting-room', { roomId: roomIdRef.current });
+    socket.off("waiting-for-approval");
+    socket.off("join-approved");
+    socket.off("join-rejected");
+    socket.off("all-users");
+    socket.off("room-not-found");
+  }
+  setWaitingStatus(null);
+  setRoomLink("");
+  setLoadingBoth(false);
+};
 
   /* ── Join ────────────────────────────────────────────────────────────────── */
   const handleGoToRoom = async () => {
@@ -130,35 +142,87 @@ const isPreFilled = !!new URLSearchParams(location.search).get('roomId');
     if (!roomId) { setError("Invalid meeting link."); return; }
 
     roomIdRef.current = roomId;
-    setLoading(true);
+    setLoadingBoth(true);
 
-    // Verify room exists
-    try {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${SIGNALING_SERVER}/check-room/${roomId}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (!data.success) {
-        setError("Meeting not found. Please check the link.");
-        setLoading(false);
+    // Verify room exists — only when a token is available.
+    // /check-room requires auth (401 for guests), so we skip it without a
+    // token and let the socket's 'room-not-found' event handle bad codes.
+    const token = localStorage.getItem("token");
+    if (token) {
+      try {
+        const res = await fetch(`${SIGNALING_SERVER}/check-room/${roomId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (!data.success) {
+          setError("Meeting not found. Please check the link.");
+          setLoadingBoth(false);
+          return;
+        }
+      } catch {
+        setError("Unable to verify room. Please try again.");
+        setLoadingBoth(false);
         return;
       }
-    } catch {
-      setError("Unable to verify room. Please try again.");
-      setLoading(false);
-      return;
     }
 
-    const socket = socketRef.current;
-    if (!socket) {
+    // ✅ FIX 2: Wait for the socket to be ready before emitting.
+    // When navigating to JoinRoom from another page (without a full refresh),
+    // socketRef.current may still be connecting. Polling here ensures we don't
+    // emit on a null/disconnected socket and get stuck loading forever.
+    const getSocket = () => new Promise((resolve, reject) => {
+      const socket = socketRef.current;
+
+      // Already connected — use immediately
+      if (socket && socket.connected) {
+        resolve(socket);
+        return;
+      }
+
+      // Not yet connected — wait up to 5s for it
+      if (socket) {
+        const onConnect = () => { clearTimeout(timer); resolve(socket); };
+        const timer = setTimeout(() => {
+          socket.off("connect", onConnect);
+          reject(new Error("Socket connection timeout"));
+        }, 5000);
+        socket.once("connect", onConnect);
+        return;
+      }
+
+      // socketRef.current is null — poll every 100ms for up to 5s
+      let attempts = 0;
+      const poll = setInterval(() => {
+        attempts++;
+        const s = socketRef.current;
+        if (s && s.connected) {
+          clearInterval(poll);
+          resolve(s);
+        } else if (attempts > 50) {
+          clearInterval(poll);
+          reject(new Error("Socket not available"));
+        }
+      }, 100);
+    });
+
+    let socket;
+    try {
+      socket = await getSocket();
+    } catch (e) {
       setError("Not connected. Please refresh the page.");
-      setLoading(false);
+      setLoadingBoth(false);
       return;
     }
 
-    // Stop preview
+    // Stop preview stream
     localStreamRef.current?.getTracks().forEach(t => t.stop());
+
+    // Clean up any stale listeners from a previous attempt
+    socket.off("waiting-for-approval");
+    socket.off("join-approved");
+    socket.off("join-rejected");
+    socket.off("all-users");
+    socket.off("room-not-found");
 
     // Emit join
     socket.emit("join-room", {
@@ -169,7 +233,7 @@ const isPreFilled = !!new URLSearchParams(location.search).get('roomId');
 
     // Listen for responses
     socket.once("waiting-for-approval", () => {
-      setLoading(false);
+      setLoadingBoth(false);
       setWaitingStatus("waiting");
     });
 
@@ -179,7 +243,7 @@ const isPreFilled = !!new URLSearchParams(location.search).get('roomId');
     });
 
     socket.once("join-rejected", () => {
-      setLoading(false);
+      setLoadingBoth(false);
       setWaitingStatus("rejected");
     });
 
@@ -190,15 +254,22 @@ const isPreFilled = !!new URLSearchParams(location.search).get('roomId');
     });
 
     socket.once("room-not-found", () => {
-      setLoading(false);
+      setLoadingBoth(false);
       setError("Room not found or has ended.");
     });
 
-    // Fallback timeout
+    // ✅ FIX 3: Use loadingRef in the timeout, not the stale `loading` state.
+    // Previously `if (loading)` always read false (stale closure), so the
+    // fallback timeout never triggered and the spinner spun indefinitely.
     setTimeout(() => {
-      if (loading) {
-        setLoading(false);
+      if (loadingRef.current) {
+        setLoadingBoth(false);
         setError("Connection timeout. Please try again.");
+        socket.off("waiting-for-approval");
+        socket.off("join-approved");
+        socket.off("join-rejected");
+        socket.off("all-users");
+        socket.off("room-not-found");
       }
     }, 10000);
   };
@@ -310,7 +381,6 @@ const isPreFilled = !!new URLSearchParams(location.search).get('roomId');
                     justifyContent: "center", textAlign: "center",
                     padding: "40px 20px", gap: 24, minHeight: 320
                   }}>
-                    {/* Spinner */}
                     <div style={{ position: "relative", width: 80, height: 80 }}>
                       <div style={{
                         width: 80, height: 80, borderRadius: "50%",
@@ -341,7 +411,6 @@ const isPreFilled = !!new URLSearchParams(location.search).get('roomId');
                       </p>
                     </div>
 
-                    {/* Animated dots */}
                     <div style={{ display: "flex", gap: 8 }}>
                       {[0, 1, 2].map(i => (
                         <div key={i} style={{
@@ -352,7 +421,6 @@ const isPreFilled = !!new URLSearchParams(location.search).get('roomId');
                       ))}
                     </div>
 
-                    {/* Room code display */}
                     <div style={{
                       background: "#F5F7FB", border: "1px solid #E5E7EB",
                       borderRadius: 8, padding: "8px 16px",
@@ -441,37 +509,37 @@ const isPreFilled = !!new URLSearchParams(location.search).get('roomId');
                     <h4>Enter Meeting Link</h4>
 
                     <div className="meetingCodeFinder modalJoinBtn">
-                     <input
-  type="text"
-  value={roomLink}
-  onChange={(e) => {
-    if (isPreFilled) return; // block edits if pre-filled
-    setRoomLink(e.target.value);
-    setError("");
-  }}
-  placeholder="Paste link or enter room code"
-  onKeyDown={e => e.key === "Enter" && handleGoToRoom()}
-  disabled={loading}
-  readOnly={isPreFilled}
-  style={isPreFilled ? {
-    background: "#F3F4F6",
-    color: "#6B7280",
-    cursor: "not-allowed",
-    height:"50px"
-  } : {}}
-/>
-                     {!isPreFilled && (
-  <button onClick={async () => {
-    try {
-      const text = await navigator.clipboard.readText();
-      setRoomLink(text); setError("");
-    } catch {
-      setError("Clipboard access denied. Please paste manually.");
-    }
-  }}>
-    Paste <img src={CopyIcon} alt='Copy Icon' />
-  </button>
-)}
+                      <input
+                        type="text"
+                        value={roomLink}
+                        onChange={(e) => {
+                          if (isPreFilled) return;
+                          setRoomLink(e.target.value);
+                          setError("");
+                        }}
+                        placeholder="Paste link or enter room code"
+                        onKeyDown={e => e.key === "Enter" && handleGoToRoom()}
+                        disabled={loading}
+                        readOnly={isPreFilled}
+                        style={isPreFilled ? {
+                          background: "#F3F4F6",
+                          color: "#6B7280",
+                          cursor: "not-allowed",
+                          height: "50px"
+                        } : {}}
+                      />
+                      {!isPreFilled && (
+                        <button onClick={async () => {
+                          try {
+                            const text = await navigator.clipboard.readText();
+                            setRoomLink(text); setError("");
+                          } catch {
+                            setError("Clipboard access denied. Please paste manually.");
+                          }
+                        }}>
+                          Paste <img src={CopyIcon} alt='Copy Icon' />
+                        </button>
+                      )}
                     </div>
 
                     {error && (

@@ -7,6 +7,7 @@ import NavigationControl from "./NavigationControl";
 import SubPrimeVideoCard from "./SubPrimeVideoCard";
 import LinkSharingCard from "./LinkSharingCard";
 import { useSocket } from "../sockets/socket";
+import InvitePanel from "./InvitePanel";
 const SIGNALING_SERVER = "https://chatter-backend-4i7g.onrender.com";
 // const SIGNALING_SERVER = 'http://localhost:8000';
 
@@ -27,34 +28,38 @@ const ICE_SERVERS = {
   iceCandidatePoolSize: 10
 };
 const MeetingSection = () => {
+  // Add near the other state declarations
   const [isMicMuted, setIsMicMuted] = useState(false);
-    const [isCamMuted, setIsCamMuted] = useState(false);
-const [waitingRoom, setWaitingRoom] = useState([]);
-
-
+  const [isCamMuted, setIsCamMuted] = useState(false);
+  const [waitingRoom, setWaitingRoom] = useState([]);
+  
+  
   const [activePanel, setActivePanel] = useState(null);
-
-
-
+  
+  
+  
   const { roomId } = useParams();
   const navigate = useNavigate();
   const socketRef = useSocket();
-
+  
   const peersRef = useRef({});
   const localStreamRef = useRef(null);
   const screenStreamRef = useRef(null);
-
+  
   const makingOfferRef = useRef({});
   const ignoreOfferRef = useRef({});
-
+  
   const [name, setName] = useState("");
   const [remoteUsers, setRemoteUsers] = useState([]);
   const [mainVideo, setMainVideo] = useState(null);
   const [isSharing, setIsSharing] = useState(false);
-const [hostId, setHostId] = useState(null);
-const pendingCandidatesRef = useRef({}); // ✅ add this with other refs
-const [myAuthId, setMyAuthId] = useState(null);
-
+  const [hostId, setHostId] = useState(null);
+  const pendingCandidatesRef = useRef({}); // ✅ add this with other refs
+  const [myAuthId, setMyAuthId] = useState(null);
+  const isHost = myAuthId !== null && hostId !== null && myAuthId?.toString() === hostId?.toString();
+  // ── Presence tracking for InvitePanel ──────────────────────────────────────
+  const [onlineUserIds, setOnlineUserIds]       = useState(new Set());
+  const [inMeetingAuthIds, setInMeetingAuthIds] = useState(new Set());
   // useEffect(() => {
   //   const storedUser = localStorage.getItem("user");
   //   if (!storedUser) return navigate(`/join/${roomId}`);
@@ -101,8 +106,91 @@ const [myAuthId, setMyAuthId] = useState(null);
 
 useEffect(() => {
   const token = localStorage.getItem("token");
+  const guestRaw = localStorage.getItem("guest");
+
+  // ── GUEST PATH ────────────────────────────────────────────────────────────
+  // Guest was approved by the host in GuestLogin and navigated here directly.
+  // Skip all auth API calls (they require a Bearer token) and use the identity
+  // stored in localStorage by GuestLogin.js.
+  if (!token && guestRaw) {
+    let guest;
+    try { guest = JSON.parse(guestRaw); } catch { guest = null; }
+
+    // Validate: guest must have been approved for THIS room
+    if (!guest || guest.roomId !== roomId) {
+      localStorage.removeItem("guest");
+      return navigate(`/guest-login?roomId=${roomId}`);
+    }
+
+    const guestName = guest.name;
+    setName(guestName);
+    // Guests have no authId — use a placeholder so host controls still work
+    setMyAuthId(null);
+
+    async function initGuestRoom() {
+      // Get media (best-effort: video+audio → audio only → nothing)
+      let stream = null;
+      let micMuted = false;
+      let camMuted = false;
+
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      } catch {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          camMuted = true;
+        } catch {
+          micMuted = true;
+          camMuted = true;
+        }
+      }
+
+      localStreamRef.current = stream;
+      setMainVideo(stream);
+      setIsMicMuted(micMuted);
+      setIsCamMuted(camMuted);
+
+      // Wait for socket to be connected before emitting
+      const waitForSocket = () => new Promise((resolve, reject) => {
+        const s = socketRef.current;
+        if (s && s.connected) { resolve(s); return; }
+        if (s) {
+          const timer = setTimeout(() => reject(new Error("timeout")), 6000);
+          s.once("connect", () => { clearTimeout(timer); resolve(s); });
+          return;
+        }
+        let attempts = 0;
+        const poll = setInterval(() => {
+          attempts++;
+          const sock = socketRef.current;
+          if (sock && sock.connected) { clearInterval(poll); resolve(sock); }
+          else if (attempts > 60) { clearInterval(poll); reject(new Error("no socket")); }
+        }, 100);
+      });
+
+      try {
+        await waitForSocket();
+      } catch {
+        console.error("[Guest] Socket not available — redirecting");
+        return navigate(`/guest-login?roomId=${roomId}`);
+      }
+
+      socketRef.current?.emit("audio-toggle", { roomId, muted: micMuted });
+      socketRef.current?.emit("video-toggle", { roomId, videoOff: camMuted });
+
+      // Emit join-room with isGuest:true so server puts guest through
+      // the correct approval logic (already approved at this point)
+      setupAndJoin(guestName, micMuted, true);
+    }
+
+    initGuestRoom();
+    return cleanup;
+  }
+
+  // ── UNAUTHENTICATED (no token, no guest) → redirect ───────────────────────
   if (!token) return navigate(`/join/${roomId}`);
 
+  // ── LOGGED-IN USER PATH ───────────────────────────────────────────────────
   async function initRoom() {
     try {
       // ── 1. Auth ──────────────────────────────────────────
@@ -114,7 +202,7 @@ useEffect(() => {
 
       const userName = authData.user.name;
       setName(userName);
-setMyAuthId(authData.user.id);  // ✅ save your own authId
+      setMyAuthId(authData.user.id);
 
       // ── 2. Meeting state (mic/cam from DB) ───────────────
       const meetingRes = await fetch(`${SIGNALING_SERVER}/meeting-state/${roomId}`, {
@@ -122,7 +210,6 @@ setMyAuthId(authData.user.id);  // ✅ save your own authId
       });
       const meetingData = await meetingRes.json();
 
-      // participant state saved when room was created
       const wantMic = meetingData?.participant?.micOn ?? true;
       const wantCam = meetingData?.participant?.camOn ?? true;
 
@@ -137,12 +224,10 @@ setMyAuthId(authData.user.id);  // ✅ save your own authId
           audio: wantMic
         });
       } catch {
-        // fallback: try audio only
         try {
           stream = await navigator.mediaDevices.getUserMedia({ audio: true });
           camMuted = true;
         } catch {
-          // no media at all
           micMuted = true;
           camMuted = true;
         }
@@ -153,12 +238,11 @@ setMyAuthId(authData.user.id);  // ✅ save your own authId
       setIsMicMuted(micMuted);
       setIsCamMuted(camMuted);
 
-              socketRef.current?.emit("audio-toggle", { roomId, muted: micMuted });
-    socketRef.current?.emit("video-toggle", { roomId, videoOff: camMuted });
-  
+      socketRef.current?.emit("audio-toggle", { roomId, muted: micMuted });
+      socketRef.current?.emit("video-toggle", { roomId, videoOff: camMuted });
 
       // ── 4. Join room ──────────────────────────────────────
-      setupAndJoin(userName, micMuted);
+      setupAndJoin(userName, micMuted, false);
 
     } catch (err) {
       console.error("Room init failed:", err);
@@ -170,6 +254,40 @@ setMyAuthId(authData.user.id);  // ✅ save your own authId
   return cleanup;
 }, []);
 
+// Add this effect alongside the other useEffects:
+useEffect(() => {
+  if (isHost && waitingRoom.length > 0 && activePanel !== 'waiting') {
+    setActivePanel('waiting');
+  }
+}, [waitingRoom.length, isHost]);
+
+// ── Track online presence so InvitePanel always sees live data ─────────────
+useEffect(() => {
+  const socket = socketRef.current;
+  if (!socket) return;
+
+  const onList    = (users) => setOnlineUserIds(new Set(users.map(u => u.id)));
+  const onOnline  = ({ userId }) => setOnlineUserIds(prev => new Set([...prev, userId]));
+  const onOffline = ({ userId }) => setOnlineUserIds(prev => {
+    const n = new Set(prev); n.delete(userId); return n;
+  });
+  const onJoined  = (u) => setInMeetingAuthIds(prev =>
+    new Set([...prev, u.authId?.toString() || ''])
+  );
+
+  socket.on('users:list',  onList);
+  socket.on('user:online',  onOnline);
+  socket.on('user:offline', onOffline);
+  socket.on('user-joined',  onJoined);
+
+  return () => {
+    socket.off('users:list',  onList);
+    socket.off('user:online',  onOnline);
+    socket.off('user:offline', onOffline);
+    socket.off('user-joined',  onJoined);
+  };
+}, [socketRef.current]);
+
 
   function cleanup() {
     const socket = socketRef.current;
@@ -180,6 +298,11 @@ setMyAuthId(authData.user.id);  // ✅ save your own authId
     socket.off("signal");
     socket.off("user-left");
     socket.off("reaction");
+    socket.off('waiting-room-update');
+socket.off('screen-share-started');
+socket.off('screen-share-stopped');
+socket.off('audio-toggle');
+socket.off('reaction');
 
     Object.values(peersRef.current).forEach(peer => peer.close());
     localStreamRef.current?.getTracks().forEach(t => t.stop());
@@ -188,20 +311,32 @@ setMyAuthId(authData.user.id);  // ✅ save your own authId
     screenStreamRef.current?.getTracks().forEach(t => t.stop());
   }
 
-  function setupAndJoin(userName,micMuted) {
+  function setupAndJoin(userName, micMuted, isGuest = false) {
+
     const socket = socketRef.current;
     if (!socket) return;
 
-    socket.emit("join-room", { roomId, name: userName,muted:micMuted});
+    // At the TOP of setupAndJoin, before the .on calls:
+socket.off('waiting-room-update');
+socket.off('user-left');
+socket.off('screen-share-started');
+socket.off('screen-share-stopped');
+socket.off('audio-toggle');
+socket.off('reaction');
 
-  socket.on('all-users', ({ users, host, waitingRoom: wr }) => {
-    setHostId(host?.toString());
-    setWaitingRoom(wr || []);
-    if (wr?.length > 0) setActivePanel('waiting'); // ✅ auto open waiting panel
-    users.forEach(u => {
-      if (u.userId !== socket.id) createPeer(u.userId, u.name, u.muted, u.authId?.toString());
-    });
-  })
+// Then register them below as before
+
+    // isGuest:true tells the server to use the already-approved guest path
+    // (server's admitUserToRoom was already called when host admitted them)
+    socket.emit("join-room", { roomId, name: userName, muted: micMuted, isGuest });
+
+socket.on('all-users', ({ users, host, waitingRoom: wr }) => {
+  setHostId(host?.toString());
+  setWaitingRoom(wr || []);
+  users.forEach(u => {
+    if (u.userId !== socket.id) createPeer(u.userId, u.name, u.muted, u.authId?.toString());
+  });
+});
 
     socket.on("user-joined", u =>{
 
@@ -350,10 +485,27 @@ socket.on('waiting-room-update', ({ waitingRoom: wr }) => {
     socket.on("user-left", id => {
       peersRef.current[id]?.close();
       delete peersRef.current[id];
- delete pendingCandidatesRef.current[id]; // ✅ clean queue too
-         setRemoteUsers(prev => prev.filter(u => u.userId !== id));
-
+      delete pendingCandidatesRef.current[id];
+      setRemoteUsers(prev => prev.filter(u => u.userId !== id));
     });
+
+    // ✅ Track remote screen share state
+    socket.on("screen-share-started", ({ userId }) => {
+      setRemoteUsers(prev =>
+        prev.map(u => u.userId === userId ? { ...u, isScreenSharing: true } : u)
+      );
+    });
+
+    socket.on("screen-share-stopped", ({ userId }) => {
+      setRemoteUsers(prev =>
+        prev.map(u => u.userId === userId ? { ...u, isScreenSharing: false } : u)
+      );
+    });
+
+
+
+
+// Then register them below as before
   }
 
 function createPeer(userId, userName,micMuted,authId) {
@@ -525,7 +677,15 @@ function toggleCam(cam){
   style={{ transition: "all 0.35s ease", height: "calc(100vh - 130px)" }}>
   <SubPrimeVideoCard
     userList={[
-      { userId: socketRef.current?.id, name, stream: mainVideo, muted:isMicMuted,  authId: myAuthId},
+      {
+        userId: socketRef.current?.id,
+        name,
+        stream: localStreamRef.current,
+        screenStream: isSharing ? mainVideo : null,
+        isScreenSharing: isSharing,
+        muted: isMicMuted,
+        authId: myAuthId
+      },
       ...remoteUsers
     ]}
     activePanel={activePanel}
@@ -560,8 +720,19 @@ function toggleCam(cam){
       <Participants count={remoteUsers.length + 1} />
     )}
 
+    {/* Invite People */}
+    {activePanel === "invite" && (
+      <InvitePanel
+        socketRef={socketRef}
+        roomId={roomId}
+        onClose={() => setActivePanel(null)}
+        onlineUserIds={onlineUserIds}
+        inMeetingAuthIds={inMeetingAuthIds}
+      />
+    )}
+
     {/* Waiting Room */}
-    {activePanel === "waiting" && (
+    {activePanel === "waiting" && isHost &&(
       <div style={{
         height: "100%", display: "flex", flexDirection: "column",
         background: "#111118", borderLeft: "1px solid rgba(255,255,255,0.08)",
@@ -709,13 +880,13 @@ isCamMuted={isCamMuted}
               setIsSharing={setIsSharing}
               socketRef={socketRef}
               roomId={roomId}
-
+ isHost={isHost}
               activePanel={activePanel}
   onToggleChat={() => setActivePanel(p => p === "chat" ? null : "chat")}
   onToggleParticipants={() => setActivePanel(p => p === "participants" ? null : "participants")}
- waitingCount={waitingRoom.length}           
+waitingCount={isHost ? waitingRoom.length : 0}
   onToggleWaiting={() => setActivePanel(p => p === 'waiting' ? null : 'waiting')}
-              
+  onToggleInvite={() => setActivePanel(p => p === 'invite' ? null : 'invite')}
               />
               <LinkSharingCard /> 
               </div>
