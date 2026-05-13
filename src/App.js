@@ -62,7 +62,23 @@ const JoinRedirect = () => {
   }
   return <Navigate to={`/guest-login?roomId=${roomId}`} replace />;
 };
+// ── Guard /room/:roomId — unauthenticated users go to join-room ───────────────
+const RoomGuard = () => {
+  const { roomId } = useParams();
+  const token    = localStorage.getItem('token');
+  const guestRaw = localStorage.getItem('guest');
 
+  if (token) return <MeetingSection />;
+
+  if (guestRaw) {
+    try {
+      const guest = JSON.parse(guestRaw);
+      if (guest.roomId === roomId) return <MeetingSection />;
+    } catch {}
+  }
+
+  return <Navigate to={`/join-room?roomId=${roomId}`} replace />;
+};
 const App = () => (
   <SocketProvider>
     <div className="appRoot">
