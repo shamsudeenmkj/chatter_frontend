@@ -55,10 +55,16 @@ const fetchMeetings = useCallback(() => {
     .finally(() => setLoading(false));
 }, []);
 
-// Initial load
+// Initial load + ask Flutter to sync Outlook right now
 useEffect(() => {
   fetchMeetings();
-}, [fetchMeetings]);
+  // Tell Flutter (via backend) to run syncToBackend immediately
+  // so any Outlook events added since the last 30-min poll appear now
+  const socket = socketRef?.current;
+  if (socket) {
+    socket.emit("outlook:request_sync");
+  }
+}, [fetchMeetings, socketRef]);
 
 // Real-time refresh when Flutter syncs new Outlook events
 useEffect(() => {
