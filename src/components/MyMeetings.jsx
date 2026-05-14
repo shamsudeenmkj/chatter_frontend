@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
+import { useSocket } from "../sockets/socket";
 import { useNavigate } from "react-router-dom";
 
 const SIGNALING_SERVER = "https://chatter-backend-4i7g.onrender.com";
@@ -34,6 +35,7 @@ const Avatar = ({ name, size = 28 }) => {
 
 const MyMeetings = () => {
   const navigate = useNavigate();
+  const socketRef = useSocket();
   const [meetings, setMeetings] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -41,28 +43,36 @@ const MyMeetings = () => {
     try { return JSON.parse(localStorage.getItem("user")); } catch { return null; }
   })();
 
-useEffect(() => {
+const fetchMeetings = useCallback(() => {
   const token = localStorage.getItem("token");
-  
-  // ✅ Don't fetch if no token
-  if (!token) {
-    setLoading(false);
-    return;
-  }
-
+  if (!token) { setLoading(false); return; }
   fetch(`${SIGNALING_SERVER}/my-meetings`, {
-    headers: {
-      Authorization: `Bearer ${token}`  // ✅ use token directly
-    }
+    headers: { Authorization: `Bearer ${token}` },
   })
     .then((r) => r.json())
-    .then((d) => {
-      console.log("meetings =>", d); // ✅ debug
-      if (d.success) setMeetings(d.meetings);
-    })
+    .then((d) => { if (d.success) setMeetings(d.meetings); })
     .catch(() => {})
     .finally(() => setLoading(false));
 }, []);
+
+// Initial load
+useEffect(() => {
+  fetchMeetings();
+}, [fetchMeetings]);
+
+// Real-time refresh when Flutter syncs new Outlook events
+useEffect(() => {
+  const socket = socketRef?.current;
+  if (!socket) return;
+
+  const handler = (data) => {
+    console.log("[MyMeetings] meetings:refresh received — reloading", data);
+    fetchMeetings();
+  };
+
+  socket.on("meetings:refresh", handler);
+  return () => socket.off("meetings:refresh", handler);
+}, [socketRef, fetchMeetings]);
 
 const handleJoin = (meeting) => {
   const isHost = meeting.hostId === currentUser?.id;
