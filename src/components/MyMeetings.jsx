@@ -100,7 +100,10 @@ const handleJoin = (meeting) => {
     (m) => m.scheduledAt && new Date(m.scheduledAt) < now
   );
 
-  const MeetingCard = ({ m }) => {
+  // CMeeting roomIds are always "xxx-xxx-xxx" (3 groups of 3 lowercase letters)
+const isCMeetingRoom = (roomId) => /^[a-z]{3}-[a-z]{3}-[a-z]{3}$/.test(roomId || '');
+
+const MeetingCard = ({ m }) => {
     const isHost = m.hostId === currentUser?.id;
     const isScheduled = !!m.scheduledAt;
     const isPast = isScheduled && new Date(m.scheduledAt) < now;
@@ -148,13 +151,16 @@ const handleJoin = (meeting) => {
               )}
             </div>
           )}
-          {!isPast && (
+          {!isPast && isCMeetingRoom(m.roomId) && (
             <button
               style={s.joinBtn}
               onClick={() => handleJoin(m)}
             >
               {isHost ? (isScheduled ? "Start" : "Join") : "Join"}
             </button>
+          )}
+          {!isPast && !isCMeetingRoom(m.roomId) && (
+            <span style={s.outlookOnlyLabel}>Outlook only</span>
           )}
           {isPast && (
             <span style={s.endedLabel}>Ended</span>
@@ -272,6 +278,7 @@ const s = {
     fontFamily: "Montserrat, sans-serif", whiteSpace: "nowrap",
   },
   endedLabel: { fontSize: 12, color: "#9CA3AF", fontWeight: 600 },
+  outlookOnlyLabel: { fontSize: 11, color: "#8B5CF6", fontWeight: 600, background: "#F5F3FF", borderRadius: 6, padding: "4px 10px" },
   emptyState: { textAlign: "center", paddingTop: 60 },
   emptyIcon: { color: "#D1D5DB", marginBottom: 16 },
   emptyTitle: { fontSize: 18, fontWeight: 700, color: "#374151", margin: "0 0 6px" },
