@@ -45,6 +45,14 @@ const MeetingSection = () => {
   const peersRef = useRef({});
   const localStreamRef = useRef(null);
   const screenStreamRef = useRef(null);
+
+  // ── Recording ──────────────────────────────────────────────────────────────
+  const mediaRecorderRef = useRef(null);
+  const recordedChunksRef = useRef([]);
+  const recordingStreamRef = useRef(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const recordingTimerRef = useRef(null);
   
   const makingOfferRef = useRef({});
   const ignoreOfferRef = useRef({});
@@ -653,6 +661,165 @@ function toggleCam(cam){
   setIsCamMuted(cam);
 }
 
+// ── Recording ────────────────────────────────────────────────────────────────
+async function startRecording() {
+  try {
+    recordedChunksRef.current = [];
+
+    // Combine all streams: local camera/screen + all remote streams
+    const audioContext = new AudioContext();
+    const destination = audioContext.createMediaStreamDestination();
+
+    // Add local audio
+    const localAudio = localStreamRef.current?.getAudioTracks()[0];
+    if (localAudio) {
+      const localSource = audioContext.createMediaStreamSource(
+        new MediaStream([localAudio])
+      );
+      localSource.connect(destination);
+    }
+
+    // Add remote audio tracks
+    remoteUsers.forEach(u => {
+      if (u.stream) {
+        const audioTracks = u.stream.getAudioTracks();
+        if (audioTracks.length > 0) {
+          const remoteSource = audioContext.createMediaStreamSource(
+            new MediaStream(audioTracks)
+          );
+          remoteSource.connect(destination);
+        }
+      }
+    });
+
+    // ── FIX Bug 1: Use screen share if active, otherwise fall back to local
+    // camera stream. No unexpected getDisplayMedia prompt for the user.
+    let videoStream;
+    let isSharedStream = false;
+    if (screenStreamRef.current) {
+      videoStream = screenStreamRef.current;
+      isSharedStream = true;
+    } else {
+      // Fall back to local camera stream — no surprise screen-picker dialog
+      videoStream = localStreamRef.current;
+    }
+
+    // Combine video + mixed audio into one stream
+    const videoTracks = videoStream?.getVideoTracks() ?? [];
+    const combinedStream = new MediaStream([
+      ...videoTracks,
+      ...destination.stream.getAudioTracks(),
+    ]);
+
+    // ── FIX Bug 3: Store isSharedStream flag instead of stream reference so
+    // stopRecording() can't be confused by a restarted screen share stream.
+    // resolvedMime is also stored here so the onstop handler in stopRecording
+    // can build the Blob with the correct type after all chunks are flushed.
+    recordingStreamRef.current = { videoStream, audioContext, isSharedStream, resolvedMime };
+
+    // Pick best supported format
+    const mimeType = [
+      "video/webm;codecs=vp9,opus",
+      "video/webm;codecs=vp8,opus",
+      "video/webm",
+      "video/mp4",
+    ].find(t => MediaRecorder.isTypeSupported(t)) || "";
+
+    // ── FIX Bug 2: Resolve mimeType once so both Blob and ext use the same value.
+    const resolvedMime = mimeType || "video/webm";
+
+    const recorder = new MediaRecorder(combinedStream, {
+      mimeType: resolvedMime,
+      videoBitsPerSecond: 2_500_000,
+    });
+
+    recorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) {
+        recordedChunksRef.current.push(e.data);
+      }
+    };
+    // NOTE: recorder.onstop is assigned in stopRecording() so the Blob is built
+    // only after all chunks are fully flushed — prevents the empty-file bug.
+
+    // If user stops screen share during recording, stop recording too
+    if (videoTracks[0]) {
+      videoTracks[0].onended = () => {
+        if (mediaRecorderRef.current?.state === "recording") {
+          stopRecording();
+        }
+      };
+    }
+
+    recorder.start(1000); // collect chunks every 1s
+    mediaRecorderRef.current = recorder;
+    setIsRecording(true);
+    setRecordingDuration(0);
+
+    // Start duration timer
+    recordingTimerRef.current = setInterval(() => {
+      setRecordingDuration(d => d + 1);
+    }, 1000);
+
+  } catch (err) {
+    console.error("[Recording] Failed to start:", err);
+    // ── FIX Bug 5: Reset UI state so the recording button doesn't get stuck.
+    setIsRecording(false);
+    setRecordingDuration(0);
+  }
+}
+
+function stopRecording() {
+  const recorder = mediaRecorderRef.current;
+  if (!recorder) return;
+
+  // ── FIX Bug A: wire up cleanup INSIDE onstop so it runs only after the
+  // MediaRecorder has fully flushed all chunks. Nulling the ref or closing
+  // the AudioContext before onstop fires discards the final chunks → empty file.
+  recorder.onstop = () => {
+    const snap = recordingStreamRef.current;
+    if (snap) {
+      const { videoStream, audioContext, isSharedStream, resolvedMime } = snap;
+      // Only stop tracks if this was NOT the live screen share stream
+      if (!isSharedStream && videoStream) {
+        videoStream.getTracks().forEach(t => t.stop());
+      }
+      // Safe to close AudioContext now that all chunks are collected
+      audioContext.close().catch(() => {});
+      recordingStreamRef.current = null;
+
+      // Build and download the recording
+      const blob = new Blob(recordedChunksRef.current, { type: resolvedMime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const ext = resolvedMime.includes("mp4") ? "mp4" : "webm";
+      a.download = `meeting-recording-${new Date().toISOString().slice(0,19).replace(/:/g,"-")}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      // ── FIX Bug B: delay revoke so the browser has time to start the download
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      recordedChunksRef.current = [];
+    }
+  };
+
+  if (recorder.state === "recording") {
+    recorder.stop(); // triggers onstop asynchronously after flushing chunks
+  }
+  mediaRecorderRef.current = null;
+
+  clearInterval(recordingTimerRef.current);
+  recordingTimerRef.current = null;
+  setIsRecording(false);
+  setRecordingDuration(0);
+}
+
+function formatDuration(secs) {
+  const m = Math.floor(secs / 60).toString().padStart(2, "0");
+  const s = (secs % 60).toString().padStart(2, "0");
+  return `${m}:${s}`;
+}
+
 
   return (
     <section className="meetingSc">
@@ -863,6 +1030,33 @@ function toggleCam(cam){
 
         <div className="row">
             <div className="col-lg-12">
+              {/* ── Recording indicator banner ─────────────────────────── */}
+              {isRecording && (
+                <div style={{
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  gap: 10, padding: "6px 16px", background: "rgba(239,68,68,0.15)",
+                  borderTop: "1px solid rgba(239,68,68,0.3)",
+                  fontFamily: "Montserrat, sans-serif",
+                }}>
+                  <span style={{
+                    width: 10, height: 10, borderRadius: "50%", background: "#ef4444",
+                    animation: "recPulse 1s infinite",
+                    flexShrink: 0,
+                  }} />
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "#ef4444" }}>
+                    Recording {formatDuration(recordingDuration)}
+                  </span>
+                  <button
+                    onClick={stopRecording}
+                    style={{
+                      background: "#ef4444", color: "#fff", border: "none",
+                      borderRadius: 6, padding: "3px 10px", fontSize: 12,
+                      fontWeight: 700, cursor: "pointer", fontFamily: "Montserrat, sans-serif",
+                    }}
+                  >Stop & Save</button>
+                </div>
+              )}
+              <style>{`@keyframes recPulse { 0%,100%{opacity:1} 50%{opacity:0.2} }`}</style>
               <div className="bottomControllers">
               <Participants count={remoteUsers.length+1}/>
               <NavigationControl
@@ -887,6 +1081,11 @@ isCamMuted={isCamMuted}
 waitingCount={isHost ? waitingRoom.length : 0}
   onToggleWaiting={() => setActivePanel(p => p === 'waiting' ? null : 'waiting')}
   onToggleInvite={() => setActivePanel(p => p === 'invite' ? null : 'invite')}
+  isRecording={isRecording}
+  onStartRecording={startRecording}
+  onStopRecording={stopRecording}
+  recordingDuration={recordingDuration}
+  formatDuration={formatDuration}
               />
               <LinkSharingCard /> 
               </div>

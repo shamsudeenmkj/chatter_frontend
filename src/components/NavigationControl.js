@@ -44,8 +44,13 @@ const NavigationControl = ({
   waitingCount = 0,
   onToggleWaiting,
   isHost = false,
-  // ─── NEW ───────────────────────────────────────────────────────────────────
-  onToggleInvite,   // () => void  — toggles the InvitePanel
+  onToggleInvite,
+  // ── Recording ─────────────────────────────────────────────────────────────
+  isRecording = false,
+  onStartRecording,
+  onStopRecording,
+  recordingDuration = 0,
+  formatDuration,
 }) => {
 
   const REACTIONS = ["👍", "👏", "❤️", "😂", "😮", "🔥"];
@@ -229,6 +234,33 @@ const NavigationControl = ({
                       <InviteIconSVG />
                     </div>
                     Invite People
+                  </button>
+                </li>
+                {/* ────────────────────────────────────────────────────────── */}
+
+                {/* ─── Record Meeting ──────────────────────────────────────── */}
+                <li>
+                  <button
+                    className="dropdown-item"
+                    onClick={isRecording ? onStopRecording : onStartRecording}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+                  >
+                    <div style={{
+                      width: 18, height: 18, borderRadius: '50%',
+                      background: isRecording ? '#ef4444' : 'rgba(239,68,68,0.15)',
+                      border: '2px solid #ef4444',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      flexShrink: 0, transition: 'background 0.2s',
+                    }}>
+                      {isRecording && (
+                        <div style={{ width: 6, height: 6, background: '#fff', borderRadius: 1 }} />
+                      )}
+                    </div>
+                    <span style={{ color: isRecording ? '#ef4444' : 'inherit', fontWeight: isRecording ? 700 : 400 }}>
+                      {isRecording
+                        ? `Stop Recording (${formatDuration?.(recordingDuration) ?? '00:00'})`
+                        : 'Record Meeting'}
+                    </span>
                   </button>
                 </li>
                 {/* ────────────────────────────────────────────────────────── */}

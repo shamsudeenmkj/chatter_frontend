@@ -50,7 +50,9 @@ const fetchMeetings = useCallback(() => {
     headers: { Authorization: `Bearer ${token}` },
   })
     .then((r) => r.json())
-    .then((d) => { if (d.success) setMeetings(d.meetings); })
+    .then((d) => { 
+      console.log(d);
+      if (d.success) setMeetings(d.meetings); })
     .catch(() => {})
     .finally(() => setLoading(false));
 }, []);
