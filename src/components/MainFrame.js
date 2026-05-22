@@ -11,6 +11,7 @@ import LoginSideBar from './LoginSideBar';
 
 import LandingLogo from '../assets/CMeetingLandingLogo.png';
 import SearchIcon from '../assets/SearchIcon.svg';
+import AdminPanel from './AdminPanel';
 
 // const SIGNALING_SERVER = 'http://localhost:8000';
 const SIGNALING_SERVER = "https://chatter-backend-4i7g.onrender.com";
@@ -43,7 +44,16 @@ const MainFrame = () => {
 
   const [searchCode, setSearchCode] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
+const [isAdmin, setIsAdmin] = useState(false);
 
+useEffect(() => {  const token = localStorage.getItem("token");
+  fetch(`${SIGNALING_SERVER}/admin/me`, { headers: { Authorization: `Bearer ${token}` } })
+    .then((r) =>{ 
+
+      console.log(r)
+      
+      setIsAdmin(r.data.isAdmin)});
+}, []);
   // Open sign-in panel if URL has ?openSignIn=true
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -148,11 +158,12 @@ const MainFrame = () => {
       setShow(true);
     }
   };
-
+  const token = localStorage.getItem("token");
   return (
     <div>
 
       <div>
+        {isAdmin && <AdminPanel token={token} />}
         <section className='headerSc'>
           <div className="container-fluid">
             <div className="row">

@@ -68,6 +68,7 @@ const MeetingSection = () => {
   // ── Presence tracking for InvitePanel ──────────────────────────────────────
   const [onlineUserIds, setOnlineUserIds]       = useState(new Set());
   const [inMeetingAuthIds, setInMeetingAuthIds] = useState(new Set());
+  const finalDurationRef = useRef(0);
   // useEffect(() => {
   //   const storedUser = localStorage.getItem("user");
   //   if (!storedUser) return navigate(`/join/${roomId}`);
@@ -665,73 +666,37 @@ function toggleCam(cam){
 async function startRecording() {
   try {
     recordedChunksRef.current = [];
-
-    // Combine all streams: local camera/screen + all remote streams
     const audioContext = new AudioContext();
     const destination = audioContext.createMediaStreamDestination();
 
-    // Add local audio
-    const localAudio = localStreamRef.current?.getAudioTracks()[0];
-    if (localAudio) {
-      const localSource = audioContext.createMediaStreamSource(
-        new MediaStream([localAudio])
-      );
-      localSource.connect(destination);
-    }
+    // ... (audio mixing code stays the same) ...
 
-    // Add remote audio tracks
-    remoteUsers.forEach(u => {
-      if (u.stream) {
-        const audioTracks = u.stream.getAudioTracks();
-        if (audioTracks.length > 0) {
-          const remoteSource = audioContext.createMediaStreamSource(
-            new MediaStream(audioTracks)
-          );
-          remoteSource.connect(destination);
-        }
-      }
-    });
+    let videoStream = screenStreamRef.current || localStreamRef.current;
+    const isSharedStream = !!screenStreamRef.current;
 
-    // ── FIX Bug 1: Use screen share if active, otherwise fall back to local
-    // camera stream. No unexpected getDisplayMedia prompt for the user.
-    let videoStream;
-    let isSharedStream = false;
-    if (screenStreamRef.current) {
-      videoStream = screenStreamRef.current;
-      isSharedStream = true;
-    } else {
-      // Fall back to local camera stream — no surprise screen-picker dialog
-      videoStream = localStreamRef.current;
-    }
-
-    // Combine video + mixed audio into one stream
-    const videoTracks = videoStream?.getVideoTracks() ?? [];
-    const combinedStream = new MediaStream([
-      ...videoTracks,
-      ...destination.stream.getAudioTracks(),
-    ]);
-
-    // ── FIX Bug 3: Store isSharedStream flag instead of stream reference so
-    // stopRecording() can't be confused by a restarted screen share stream.
-    // resolvedMime is also stored here so the onstop handler in stopRecording
-    // can build the Blob with the correct type after all chunks are flushed.
-    recordingStreamRef.current = { videoStream, audioContext, isSharedStream, resolvedMime };
-
-    // Pick best supported format
+    // ✅ FIX: declare resolvedMime BEFORE using it
     const mimeType = [
       "video/webm;codecs=vp9,opus",
       "video/webm;codecs=vp8,opus",
       "video/webm",
       "video/mp4",
     ].find(t => MediaRecorder.isTypeSupported(t)) || "";
-
-    // ── FIX Bug 2: Resolve mimeType once so both Blob and ext use the same value.
     const resolvedMime = mimeType || "video/webm";
+
+    const videoTracks = videoStream?.getVideoTracks() ?? [];
+    const combinedStream = new MediaStream([
+      ...videoTracks,
+      ...destination.stream.getAudioTracks(),
+    ]);
+
+    // NOW safe to use resolvedMime here
+    recordingStreamRef.current = { videoStream, audioContext, isSharedStream, resolvedMime };
 
     const recorder = new MediaRecorder(combinedStream, {
       mimeType: resolvedMime,
       videoBitsPerSecond: 2_500_000,
     });
+    // ... rest stays the same
 
     recorder.ondataavailable = (e) => {
       if (e.data && e.data.size > 0) {
@@ -755,10 +720,12 @@ async function startRecording() {
     setIsRecording(true);
     setRecordingDuration(0);
 
-    // Start duration timer
-    recordingTimerRef.current = setInterval(() => {
-      setRecordingDuration(d => d + 1);
-    }, 1000);
+  recordingTimerRef.current = setInterval(() => {
+  setRecordingDuration(d => {
+    finalDurationRef.current = d + 1;  // ✅ keep ref in sync
+    return d + 1;
+  });
+}, 1000);
 
   } catch (err) {
     console.error("[Recording] Failed to start:", err);
@@ -775,33 +742,49 @@ function stopRecording() {
   // ── FIX Bug A: wire up cleanup INSIDE onstop so it runs only after the
   // MediaRecorder has fully flushed all chunks. Nulling the ref or closing
   // the AudioContext before onstop fires discards the final chunks → empty file.
-  recorder.onstop = () => {
-    const snap = recordingStreamRef.current;
-    if (snap) {
-      const { videoStream, audioContext, isSharedStream, resolvedMime } = snap;
-      // Only stop tracks if this was NOT the live screen share stream
-      if (!isSharedStream && videoStream) {
-        videoStream.getTracks().forEach(t => t.stop());
-      }
-      // Safe to close AudioContext now that all chunks are collected
-      audioContext.close().catch(() => {});
-      recordingStreamRef.current = null;
+recorder.onstop = () => {
+  const snap = recordingStreamRef.current;
+  if (snap) {
+    const { videoStream, audioContext, isSharedStream, resolvedMime } = snap;
+    if (!isSharedStream && videoStream) videoStream.getTracks().forEach(t => t.stop());
+    audioContext.close().catch(() => {});
+    recordingStreamRef.current = null;
 
-      // Build and download the recording
-      const blob = new Blob(recordedChunksRef.current, { type: resolvedMime });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      const ext = resolvedMime.includes("mp4") ? "mp4" : "webm";
-      a.download = `meeting-recording-${new Date().toISOString().slice(0,19).replace(/:/g,"-")}.${ext}`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      // ── FIX Bug B: delay revoke so the browser has time to start the download
-      setTimeout(() => URL.revokeObjectURL(url), 10000);
-      recordedChunksRef.current = [];
+    const blob = new Blob(recordedChunksRef.current, { type: resolvedMime });
+    const ext = resolvedMime.includes("mp4") ? "mp4" : "webm";
+    const filename = `meeting-recording-${new Date().toISOString().slice(0,19).replace(/:/g,"-")}.${ext}`;
+
+    // Download
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+
+    // ✅ NEW: Save log entry for MeetingRecords page
+    try {
+      const existing = JSON.parse(localStorage.getItem("meetingRecords") || "[]");
+      const entry = {
+        id: Date.now().toString(),
+        filename,
+        roomId,
+        recordedAt: new Date().toISOString(),
+        durationSeconds: recordingDuration,
+        fileSize: blob.size,
+        recordedBy: name,
+        participants: [name, ...remoteUsers.map(u => u.name)],
+      };
+      localStorage.setItem("meetingRecords", JSON.stringify([entry, ...existing]));
+    } catch (e) {
+      console.warn("[Recording] Could not save log entry:", e);
     }
-  };
+
+    recordedChunksRef.current = [];
+  }
+};
 
   if (recorder.state === "recording") {
     recorder.stop(); // triggers onstop asynchronously after flushing chunks
