@@ -3,6 +3,9 @@ import React, {
   useLayoutEffect, useCallback
 } from "react";
 
+import MicOn from "../assets/micOpenIcon.svg"
+import MicOff from "../assets/micCloseIcon.svg"
+
 const USERS_PER_PAGE = 25;
 const ASPECT_RATIO = 16 / 9;
 
@@ -73,8 +76,9 @@ const Ic = ({ d, fill = "currentColor", size = 14, vb = "0 0 24 24" }) => (
   <svg width={size} height={size} viewBox={vb} fill={fill}><path d={d} /></svg>
 );
 
-const MicOnIcon  = () => <Ic fill="white"   d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm-6 9a6 6 0 0 0 12 0h2a8 8 0 0 1-7 7.93V21h-2v-3.07A8 8 0 0 1 4 10H6z" />;
-const MicOffIcon = () => <Ic fill="#ef4444" d="M17 11a5 5 0 0 1-8.584 3.502L17 6.418V11zm-5 7.9V21h2v-3.07A8 8 0 0 0 20 10h-2a6 6 0 0 1-6 6zM2.707 1.293 1.293 2.707 8 9.414V11a4 4 0 0 0 6.297 3.281l1.42 1.42A6 6 0 0 1 6 11H4a8 8 0 0 0 7 7.93V21H9v2h6v-2h-2v-2.07a7.97 7.97 0 0 0 2.652-.975l1.64 1.642 1.415-1.414L2.707 1.293z" />;
+
+const MicOnIcon  = ({ size = 16 }) => <img alt="MicOn"  src={MicOn}  style={{ width: size, height: size }} />;
+const MicOffIcon = ({ size = 16 }) => <img alt="MicOff" src={MicOff} style={{ width: size, height: size }} />;
 const PinIcon    = () => <Ic fill="white" size={12} d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z" />;
 const UnpinIcon  = () => <Ic fill="white" size={12} d="M2 4l18 18-1.41 1.41L3.59 8.8 2 7.21V4zm14 8V4h1V2H7v2h1v1.17L16 12zm-5.2 2H6v-2l2-2V9.83L4.83 6.62 4 6V4h1v8l-2 2v2h5.2z" />;
 const HandIcon   = () => <Ic fill="#FBBF24" d="M21 7a2 2 0 0 0-2-2 2 2 0 0 0-2-2 2 2 0 0 0-2-2H9a2 2 0 0 0-2 2v9.586L5.586 11 4 12.586l4 4V19a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z" />;

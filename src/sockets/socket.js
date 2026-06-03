@@ -10,30 +10,45 @@ export const SocketProvider = ({ children }) => {
   const socketRef = useRef(null);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    const token    = localStorage.getItem("token");
     const guestRaw = localStorage.getItem("guest");
 
-    // Logged-in users pass their JWT. Guests pass isGuest flag so the
-    // backend middleware can let them through without a token.
+    // ✅ FIX 1: Read guestName safely — GuestLogin stores it before navigating
+    // but the SocketProvider mounts once on app load (before guest data exists),
+    // so we must re-read localStorage at connection time, not at render time.
+    let guestName = "Guest";
+    if (!token && guestRaw) {
+      try { guestName = JSON.parse(guestRaw).name || "Guest"; } catch { /* keep default */ }
+    }
+
     const authPayload = token
-      ? { token }
-      : guestRaw
-      ? { isGuest: true, guestName: (() => { try { return JSON.parse(guestRaw).name; } catch { return "Guest"; } })() }
-      : { isGuest: true };
+      ? { token, clientType: "react" }
+      : { isGuest: true, guestName };
 
     socketRef.current = io(SIGNALING_SERVER, {
       auth: authPayload,
       reconnection: true,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: 10,
       reconnectionDelay: 1000,
     });
 
-    socketRef.current.on("connect_error", (err) => {
+    const socket = socketRef.current;
+
+    socket.on("connect_error", (err) => {
       console.warn("[Socket] connect_error:", err.message);
     });
 
+    // ✅ FIX 2: Rejoin the public room after every reconnect.
+    // The backend auto-joins on 'connection', but after a socket reconnect
+    // the server fires 'connection' again — however the client must also
+    // re-emit presence:join so the server re-runs the room join logic.
+    // Simplest fix: emit a dedicated re-join on every 'connect' event.
+    socket.on("connect", () => {
+      socket.emit("room:join", { room: "public" });
+    });
+
     return () => {
-      socketRef.current?.disconnect();
+      socket.disconnect();
     };
   }, []);
 

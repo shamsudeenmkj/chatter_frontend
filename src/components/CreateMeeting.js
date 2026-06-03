@@ -349,7 +349,7 @@ const checkAvailability = useCallback(() => {
 
   /* ═══════════════════════════ RENDER ════════════════════════════════════════ */
   return (
-    <div style={styles.page}>
+    <div style={styles.page} >
       {/* Conflict confirmation modal */}
       {pendingConflict && (
         <ConflictModal
@@ -360,7 +360,7 @@ const checkAvailability = useCallback(() => {
         />
       )}
 
-      <div style={styles.card}>
+      <div style={styles.card} className="cardwidthAdj">
         {/* ── Header ── */}
         <div style={styles.cardHeader}>
           <button style={styles.backBtn} onClick={() => navigate(-1)} title="Back">
@@ -368,17 +368,19 @@ const checkAvailability = useCallback(() => {
               <polyline points="15 18 9 12 15 6" />
             </svg>
           </button>
-          <div>
+          <div className="createMeetingtitleCnt">
             <h1 style={styles.cardTitle}>New Meeting</h1>
             <p style={styles.cardSubtitle}>Set up an instant or scheduled meeting</p>
           </div>
         </div>
 
         <form onSubmit={handleSubmit}>
-          {/* ── Meeting Title ── */}
+          <div className="meetingAndParticipantsRequirementsCnt">
+                <div className="meetingRequirementsCnt col-12 col-sm-12 col-md-5 col-lg-5 col-xl-5 col-xxl-5">
+              {/* ── Meeting Title ── */}
           <div style={styles.fieldGroup}>
             <label style={styles.label}>Meeting Title</label>
-            <input
+            <input className="newMtIpStyle"
               style={styles.input}
               type="text"
               placeholder="e.g. Team Weekly Sync"
@@ -406,7 +408,7 @@ const checkAvailability = useCallback(() => {
           {/* ── Scheduled fields ── */}
           {meetingType === "scheduled" && (
             <>
-              <div style={styles.twoCol}>
+              <div style={styles.twoCol} className="micCamOnOffCnt">
                 <div style={styles.fieldGroup}>
                   <label style={styles.label}>Date & Time</label>
                   <input
@@ -454,7 +456,7 @@ const checkAvailability = useCallback(() => {
 
           {/* ── Media toggles (instant only) ── */}
           {meetingType === "instant" && (
-            <div style={styles.mediaRow}>
+            <div style={styles.mediaRow} className="micCamOnOffCnt">
               <MediaToggle icon={<MicIcon />} label="Microphone" active={hasAudio} onToggle={() => setHasAudio((v) => !v)} />
               <MediaToggle icon={<CamIcon />} label="Camera"     active={hasVideo} onToggle={() => setHasVideo((v) => !v)} />
             </div>
@@ -470,7 +472,7 @@ const checkAvailability = useCallback(() => {
                 <p style={styles.approvalTitle}>Require Host Approval</p>
                 <p style={styles.approvalSub}>Participants wait in lobby until admitted</p>
               </div>
-              <button
+              <button className="alteredToggleBnt"
                 type="button"
                 style={{ ...styles.switchTrack, background: requireApproval ? "#004ECC" : "#D1D5DB" }}
                 onClick={() => setRequireApproval((v) => !v)}
@@ -481,8 +483,10 @@ const checkAvailability = useCallback(() => {
               </button>
             </div>
           </div>
+          </div>         
 
-          {/* ── Invite Users ── */}
+          <div className="participantsRequirementsCnt col-12 col-sm-12 col-md-6 col-lg-6 col-xl-6 col-xxl-6">
+              {/* ── Invite Users ── */}
           <div style={styles.fieldGroup}>
             <label style={styles.label}>
               Invite Participants
@@ -491,7 +495,7 @@ const checkAvailability = useCallback(() => {
               )}
             </label>
 
-            <input
+            <input className="newMtIpStyle intMd"
               style={{ ...styles.input, marginBottom: 8 }}
               type="text"
               placeholder="Search by name or email…"
@@ -574,7 +578,7 @@ const checkAvailability = useCallback(() => {
           {error && <p style={styles.errorMsg}>{error}</p>}
 
           {/* ── Submit ── */}
-          <button
+          <button className="stMtBtn"
             type="submit"
             style={{ ...styles.submitBtn, opacity: submitting ? 0.7 : 1, cursor: submitting ? "not-allowed" : "pointer" }}
             disabled={submitting}
@@ -585,6 +589,8 @@ const checkAvailability = useCallback(() => {
               ? "Start Meeting Now"
               : "Schedule Meeting"}
           </button>
+          </div> 
+          </div>                   
         </form>
       </div>
     </div>

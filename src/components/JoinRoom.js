@@ -1,10 +1,15 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import Footer from './Footer';
-import MainMicOff from "../assets/micCloseIcon.svg";
-import MainCamOff from "../assets/videoCloseIcon.svg";
-import DummyCam from '../assets/dummyCam Image.svg';
-import NavMicOpen from '../assets/micOpenIcon.svg';
+// import MainMicOff from "../assets/micCloseIcon.svg";
+import JoinMicOn from "../assets/JoinMicOn.svg";
+// import MainCamOff from "../assets/videoCloseIcon.svg";
+import JoinCamOn from "../assets/JoinCamOn.svg";
+// import DummyCam from '../assets/dummyCam Image.svg';
+import JoinCamOff from "../assets/JoinCamOff.svg";
+// import NavMicOpen from '../assets/micOpenIcon.svg';
+import JoinMicOff from "../assets/JoinMicOff.svg";
 import LandingLogo from '../assets/CMeetingLandingLogo.png';
+// import CmLogo from '../assets/finalizedHeaderLogo.svg';
 import { useNavigate } from 'react-router-dom';
 import CopyIcon from '../assets/copyIcon.svg';
 import { useSocket } from '../sockets/socket';
@@ -312,7 +317,14 @@ const JoinRoom = () => {
             {/* Left: Camera preview */}
             <div className='col-md-6 col-lg-7 col-xl-7 col-xxl-7'>
               <div className='CreateVideoCnt'>
-                <h4>Join Meeting</h4>
+                <div className="backArrowCnt joinMt">
+            <button style={styles.backBtn} onClick={() => navigate(-1)} title="Back">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+          </button>
+              <h4>Join Meeting</h4>
+          </div>                 
                 <div style={{ position: "relative" }}>
                   {isCamMuted && (
                     <div style={{
@@ -334,9 +346,9 @@ const JoinRoom = () => {
                     id="previewVideo"
                     autoPlay muted playsInline
                     style={{
-                      width: "100%", maxWidth: "50vw", height: "60vh",
+                      width: "100%", height: "60vh",
                       background: "#0d0d1a", borderRadius: 12,
-                      objectFit: "cover", display: "block"
+                      objectFit: "contain", display: "block"
                     }}
                   />
                 </div>
@@ -352,7 +364,7 @@ const JoinRoom = () => {
                         border: isMicMuted ? "1px solid rgba(239,68,68,0.4)" : undefined
                       }}
                     >
-                      <img src={isMicMuted ? MainMicOff : NavMicOpen} alt="Mic" />
+                      <img src={isMicMuted ? JoinMicOff : JoinMicOn} alt="Mic" />
                     </div>
                     <div
                       className='micAndVideoBackShadow'
@@ -363,7 +375,7 @@ const JoinRoom = () => {
                         border: isCamMuted ? "1px solid rgba(239,68,68,0.4)" : undefined
                       }}
                     >
-                      <img src={isCamMuted ? MainCamOff : DummyCam} alt="Cam" />
+                      <img src={isCamMuted ? JoinCamOff : JoinCamOn} alt="Cam" />
                     </div>
                   </div>
                 </div>
@@ -576,7 +588,7 @@ const JoinRoom = () => {
                     </div>
 
                     {/* Mic/cam status hint */}
-                    <div style={{
+                    {/* <div style={{
                       display: "flex", gap: 10, marginTop: 16, justifyContent: "center"
                     }}>
                       <span style={{
@@ -597,7 +609,7 @@ const JoinRoom = () => {
                       }}>
                         {isCamMuted ? "📷 Cam Off" : "📷 Cam On"}
                       </span>
-                    </div>
+                    </div> */}
                   </>
                 )}
 
@@ -623,5 +635,11 @@ const JoinRoom = () => {
     </div>
   );
 };
+const styles = {
+  backBtn: {
+    background: "#F3F4F6", border: "none", borderRadius: 8, padding: "8px 10px",
+    cursor: "pointer", display: "flex", alignItems: "center", color: "#374151", flexShrink: 0,
+  },
+}
 
 export default JoinRoom;

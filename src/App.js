@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useState } from 'react'
 import './App.css';
 import MeetingSection from './components/MeetingSection';
 import { SocketProvider } from './sockets/socket';
@@ -8,7 +8,6 @@ import JoinRoom from './components/JoinRoom';
 import CreateMeeting from './components/CreateMeeting';
 import MyMeetings from './components/MyMeetings';
 import GuestLogin from './components/Guestlogin';
-import AdminPanel from './components/AdminPanel';
 
 // Handles deep-link from Flutter: stores token then redirects
 const AutoLogin = () => {
@@ -93,7 +92,6 @@ const App = () => (
           <Route path="/guest-login"  element={<GuestLogin />} />
           <Route path="/create-room"  element={<CreateMeeting />} />
           <Route path="/my-meetings"  element={<MyMeetings />} />
-          <Route path="/admin" element={<ProtectedAdminRoute />} />
           {/* /signup removed — registration is app-only */}
         </Routes>
       </BrowserRouter>
@@ -102,23 +100,3 @@ const App = () => (
 );
 
 export default App;
-
-
-function ProtectedAdminRoute() {
-  const token = localStorage.getItem("token");
-  const [isAdmin, setIsAdmin] = useState(null);
-
-  useEffect(() => {
-    if (!token) { setIsAdmin(false); return; }
-    fetch("https://chatter-backend-4i7g.onrender.com/admin/me", {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-      .then(r => r.json())
-      .then(d => setIsAdmin(d.isAdmin || false))
-      .catch(() => setIsAdmin(false));
-  }, []);
-
-  if (isAdmin === null) return <div style={{ padding: 40, textAlign: "center" }}>Checking access…</div>;
-  if (!isAdmin) return <Navigate to="/" replace />;
-  return <AdminPanel token={token} />;
-}

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import LandingLogo from '../assets/CMeetingLandingLogo.png';
+// import LandingLogo from '../assets/finalizedHeaderLogo.svg';
+import CmLogo from '../assets/finalizedHeaderLogo.svg';
 import SearchIcon from '../assets/SearchIcon.svg';
 import LoginSideBar from './LoginSideBar';
 
@@ -44,7 +45,7 @@ const Header = ({ onAutoSignIn }) => {
 
                 {/* Logo */}
                 <div className="logoCnt" style={{ cursor: 'pointer' }} onClick={() => navigate('/')}>
-                  <img src={LandingLogo} alt="Logo" />
+                  <img src={CmLogo} alt="Logo" />
                 </div>
 
                 {/* Right side */}

@@ -68,7 +68,17 @@ const MeetingSection = () => {
   // ── Presence tracking for InvitePanel ──────────────────────────────────────
   const [onlineUserIds, setOnlineUserIds]       = useState(new Set());
   const [inMeetingAuthIds, setInMeetingAuthIds] = useState(new Set());
+
+  // ── Private chat state — lifted here so messages are captured even when
+  //    ChatCard is not mounted (panel closed). Keyed by sorted socket-ID pair.
+  const [privateMessages, setPrivateMessages] = useState({});
+  const [privateUnread, setPrivateUnread]     = useState({});
+  const mySocketIdRef = useRef(null);
   const finalDurationRef = useRef(0);
+const writableStreamRef = useRef(null);
+const pendingWritesRef = useRef(0);
+const recordingStartTimeRef = useRef(null);
+
   // useEffect(() => {
   //   const storedUser = localStorage.getItem("user");
   //   if (!storedUser) return navigate(`/join/${roomId}`);
@@ -297,6 +307,48 @@ useEffect(() => {
   };
 }, [socketRef.current]);
 
+  // 25002500 Private message buckets: pre-init for every combination 250025002500250025002500250025002500250025002500250025002500250025002500250025002500250025002500250025002500250025002500250025002500
+  // Runs whenever the remote user list changes. Creates an empty bucket for
+  // each pair so messages arriving before the chat panel is opened are captured.
+  useEffect(() => {
+    const socket = socketRef.current;
+    const myId   = socket?.id;
+    if (!myId) return;
+    mySocketIdRef.current = myId;
+    setPrivateMessages(prev => {
+      const next = { ...prev };
+      remoteUsers.forEach(u => {
+        const key = [myId, u.userId].sort().join('_');
+        if (!next[key]) next[key] = [];
+      });
+      return next;
+    });
+  }, [remoteUsers]);
+
+  // 25002500 react:meeting:private listener 2014 always-on in MeetingSection 2500250025002500250025002500250025002500250025002500250025002500250025002500
+  // Lives here not in ChatCard so it captures messages even when panel is closed.
+  useEffect(() => {
+    const socket = socketRef.current;
+    if (!socket) return;
+    mySocketIdRef.current = socket.id;
+    const onConnect = () => { mySocketIdRef.current = socket.id; };
+    socket.on('connect', onConnect);
+    const onPrivate = (msg) => {
+      const myId          = mySocketIdRef.current || socket.id;
+      const otherSocketId = msg.senderId === myId ? msg.receiverId : msg.senderId;
+      const key           = [myId, otherSocketId].sort().join('_');
+      setPrivateMessages(prev => ({ ...prev, [key]: [...(prev[key] || []), msg] }));
+      const isFromMe = msg.senderId === myId;
+      if (!isFromMe) {
+        setPrivateUnread(prev => ({ ...prev, [msg.senderId]: (prev[msg.senderId] || 0) + 1 }));
+      }
+    };
+    socket.on('react:meeting:private', onPrivate);
+    return () => {
+      socket.off('react:meeting:private', onPrivate);
+      socket.off('connect', onConnect);
+    };
+  }, [socketRef.current]);
 
   function cleanup() {
     const socket = socketRef.current;
@@ -663,140 +715,200 @@ function toggleCam(cam){
 }
 
 // ── Recording ────────────────────────────────────────────────────────────────
+// ── Add this ref at the top with your other refs ──────────────────────────
+
+// ── Recording ────────────────────────────────────────────────────────────────
+// ── Add these two refs with your other refs at the top ──
+// ── Recording ────────────────────────────────────────────────────────────────
+// ── Add these refs at the top with your other refs ──
+// const writableStreamRef = useRef(null);
+
 async function startRecording() {
+  console.log("🎬 [Recording] startRecording() called");
+
+  if (mediaRecorderRef.current) {
+    console.warn("🎬 [Recording] already recording — ignoring");
+    return;
+  }
+
   try {
     recordedChunksRef.current = [];
-    const audioContext = new AudioContext();
-    const destination = audioContext.createMediaStreamDestination();
+    finalDurationRef.current = 0;
 
-    // ... (audio mixing code stays the same) ...
-
-    let videoStream = screenStreamRef.current || localStreamRef.current;
-    const isSharedStream = !!screenStreamRef.current;
-
-    // ✅ FIX: declare resolvedMime BEFORE using it
+    // ── MIME type ─────────────────────────────────────────────────────────
     const mimeType = [
+        "video/mp4;codecs=h264,aac",   // ✅ try MP4 first — plays everywhere
+
       "video/webm;codecs=vp9,opus",
       "video/webm;codecs=vp8,opus",
       "video/webm",
-      "video/mp4",
     ].find(t => MediaRecorder.isTypeSupported(t)) || "";
     const resolvedMime = mimeType || "video/webm";
+    const ext = resolvedMime.includes("mp4") ? "mp4" : "webm";
+    const suggestedName = `meeting-recording-${new Date().toISOString().slice(0,19).replace(/:/g,"-")}.${ext}`;
+    console.log("🎬 [Recording] mimeType:", resolvedMime);
 
-    const videoTracks = videoStream?.getVideoTracks() ?? [];
-    const combinedStream = new MediaStream([
-      ...videoTracks,
-      ...destination.stream.getAudioTracks(),
-    ]);
+    // ── Capture entire browser tab ────────────────────────────────────────
+    let tabStream;
+    try {
+      tabStream = await navigator.mediaDevices.getDisplayMedia({
+        video: { displaySurface: "browser", frameRate: 30 },
+        audio: true,           // ✅ captures all tab audio — remote users included
+        preferCurrentTab: true, // Chrome 109+ auto-selects this tab
+      });
+    } catch (err) {
+      if (err.name === "NotAllowedError") {
+        console.warn("🎬 [Recording] user cancelled tab capture");
+        return;
+      }
+      console.error("🎬 [Recording] getDisplayMedia failed:", err);
+      return;
+    }
 
-    // NOW safe to use resolvedMime here
-    recordingStreamRef.current = { videoStream, audioContext, isSharedStream, resolvedMime };
+    const videoTracks = tabStream.getVideoTracks();
+    const audioTracks = tabStream.getAudioTracks();
+    console.log("🎬 [Recording] tab video tracks:", videoTracks.map(t => `${t.label}:${t.readyState}`));
+    console.log("🎬 [Recording] tab audio tracks:", audioTracks.map(t => `${t.label}:${t.readyState}`));
 
+    if (videoTracks.length === 0) {
+      console.error("🎬 [Recording] ❌ no video track from tab capture");
+      tabStream.getTracks().forEach(t => t.stop());
+      return;
+    }
+
+    const combinedStream = new MediaStream([...videoTracks, ...audioTracks]);
+    console.log("🎬 [Recording] combinedStream tracks:", combinedStream.getTracks().map(t => `${t.kind}:${t.readyState}`));
+
+    recordingStreamRef.current = {
+      tabStream,
+      audioContext: null,
+      resolvedMime,
+      suggestedName,
+    };
+
+    // ── MediaRecorder ─────────────────────────────────────────────────────
     const recorder = new MediaRecorder(combinedStream, {
       mimeType: resolvedMime,
       videoBitsPerSecond: 2_500_000,
     });
-    // ... rest stays the same
+    console.log("🎬 [Recording] MediaRecorder created, state:", recorder.state);
+
+    recorder.onstart = () => console.log("🎬 [Recording] ✅ recording live!");
+    recorder.onerror = (e) => console.error("🎬 [Recording] ❌ error:", e.error);
 
     recorder.ondataavailable = (e) => {
+      console.log(`🎬 [Recording] chunk — size: ${e.data?.size ?? 0} | total: ${recordedChunksRef.current.length}`);
       if (e.data && e.data.size > 0) {
         recordedChunksRef.current.push(e.data);
+        console.log(`🎬 [Recording] ✅ chunk #${recordedChunksRef.current.length} saved`);
+      } else {
+        console.warn("🎬 [Recording] ⚠️ empty chunk!");
       }
     };
-    // NOTE: recorder.onstop is assigned in stopRecording() so the Blob is built
-    // only after all chunks are fully flushed — prevents the empty-file bug.
 
-    // If user stops screen share during recording, stop recording too
-    if (videoTracks[0]) {
-      videoTracks[0].onended = () => {
-        if (mediaRecorderRef.current?.state === "recording") {
-          stopRecording();
-        }
-      };
-    }
+    // If user stops the tab share from browser UI, stop recording too
+    videoTracks[0].onended = () => {
+      console.log("🎬 [Recording] tab share ended — auto stopping recording");
+      if (mediaRecorderRef.current?.state === "recording") stopRecording();
+    };
 
-    recorder.start(1000); // collect chunks every 1s
+    recorder.start(1000);
+    console.log("🎬 [Recording] recorder.start(1000) — state:", recorder.state);
+
     mediaRecorderRef.current = recorder;
     setIsRecording(true);
     setRecordingDuration(0);
 
-  recordingTimerRef.current = setInterval(() => {
-  setRecordingDuration(d => {
-    finalDurationRef.current = d + 1;  // ✅ keep ref in sync
-    return d + 1;
-  });
-}, 1000);
+    recordingTimerRef.current = setInterval(() => {
+      setRecordingDuration(d => {
+        finalDurationRef.current = d + 1;
+        return d + 1;
+      });
+    }, 1000);
 
   } catch (err) {
-    console.error("[Recording] Failed to start:", err);
-    // ── FIX Bug 5: Reset UI state so the recording button doesn't get stuck.
+    console.error("🎬 [Recording] ❌ Failed to start:", err);
     setIsRecording(false);
     setRecordingDuration(0);
   }
 }
 
 function stopRecording() {
+  console.log("🛑 [Recording] stopRecording() called");
   const recorder = mediaRecorderRef.current;
-  if (!recorder) return;
+  if (!recorder) {
+    console.warn("🛑 [Recording] no recorder — ignoring");
+    return;
+  }
 
-  // ── FIX Bug A: wire up cleanup INSIDE onstop so it runs only after the
-  // MediaRecorder has fully flushed all chunks. Nulling the ref or closing
-  // the AudioContext before onstop fires discards the final chunks → empty file.
-recorder.onstop = () => {
-  const snap = recordingStreamRef.current;
-  if (snap) {
-    const { videoStream, audioContext, isSharedStream, resolvedMime } = snap;
-    if (!isSharedStream && videoStream) videoStream.getTracks().forEach(t => t.stop());
-    audioContext.close().catch(() => {});
+  if (recorder.state === "inactive") {
+    console.warn("🛑 [Recording] recorder inactive — ignoring");
+    return;
+  }
+
+  const finalDuration = finalDurationRef.current;
+  console.log("🛑 [Recording] state:", recorder.state, "| chunks:", recordedChunksRef.current.length, "| duration:", finalDuration);
+
+  recorder.onstop = () => {
+    console.log("🛑 [Recording] onstop — chunks:", recordedChunksRef.current.length);
+    const snap = recordingStreamRef.current;
+    if (!snap) return;
+
+    const { tabStream, audioContext, resolvedMime, suggestedName } = snap;
+
+    // ── Cleanup streams ───────────────────────────────────────────────────
+    tabStream?.getTracks().forEach(t => t.stop());
+    audioContext?.close().catch(() => {});
     recordingStreamRef.current = null;
 
     const blob = new Blob(recordedChunksRef.current, { type: resolvedMime });
-    const ext = resolvedMime.includes("mp4") ? "mp4" : "webm";
-    const filename = `meeting-recording-${new Date().toISOString().slice(0,19).replace(/:/g,"-")}.${ext}`;
+    console.log("🛑 [Recording] blob size:", blob.size, "bytes");
 
-    // Download
+    if (blob.size === 0) {
+      console.error("🛑 [Recording] ❌ blob empty — nothing recorded!");
+      recordedChunksRef.current = [];
+      return;
+    }
+
+    // ── Download ──────────────────────────────────────────────────────────
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = filename;
+    a.download = suggestedName;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 10000);
+    console.log("🛑 [Recording] ✅ download triggered:", suggestedName);
 
-    // ✅ NEW: Save log entry for MeetingRecords page
+    // ── Save log ──────────────────────────────────────────────────────────
     try {
       const existing = JSON.parse(localStorage.getItem("meetingRecords") || "[]");
-      const entry = {
+      localStorage.setItem("meetingRecords", JSON.stringify([{
         id: Date.now().toString(),
-        filename,
+        filename: suggestedName,
         roomId,
         recordedAt: new Date().toISOString(),
-        durationSeconds: recordingDuration,
+        durationSeconds: finalDuration,
         fileSize: blob.size,
         recordedBy: name,
         participants: [name, ...remoteUsers.map(u => u.name)],
-      };
-      localStorage.setItem("meetingRecords", JSON.stringify([entry, ...existing]));
+      }, ...existing]));
+      console.log("🛑 [Recording] ✅ log saved");
     } catch (e) {
-      console.warn("[Recording] Could not save log entry:", e);
+      console.warn("🛑 [Recording] log save failed:", e);
     }
 
     recordedChunksRef.current = [];
-  }
-};
+  };
 
-  if (recorder.state === "recording") {
-    recorder.stop(); // triggers onstop asynchronously after flushing chunks
-  }
+  if (recorder.state === "recording") recorder.stop();
   mediaRecorderRef.current = null;
-
   clearInterval(recordingTimerRef.current);
   recordingTimerRef.current = null;
   setIsRecording(false);
   setRecordingDuration(0);
 }
-
 function formatDuration(secs) {
   const m = Math.floor(secs / 60).toString().padStart(2, "0");
   const s = (secs % 60).toString().padStart(2, "0");
@@ -862,7 +974,12 @@ function formatDuration(secs) {
       <ChatCard
   userList={remoteUsers}
   onToggleChat={() => setActivePanel(p => p === "chat" ? null : "chat")}
-  hostId={hostId}/>
+  hostId={hostId}
+  privateMessages={privateMessages}
+  setPrivateMessages={setPrivateMessages}
+  privateUnread={privateUnread}
+  setPrivateUnread={setPrivateUnread}
+  mySocketIdRef={mySocketIdRef}/>
     )}
 
     {/* Participants */}

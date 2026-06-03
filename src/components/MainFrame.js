@@ -8,10 +8,9 @@ import SignInForm from './SignInForm';
 import SignUpForm from './SignUpForm';
 import { useSocket } from '../sockets/socket';
 import LoginSideBar from './LoginSideBar';
-
 import LandingLogo from '../assets/CMeetingLandingLogo.png';
+import CmLogo from '../assets/finalizedHeaderLogo.svg';
 import SearchIcon from '../assets/SearchIcon.svg';
-import AdminPanel from './AdminPanel';
 
 // const SIGNALING_SERVER = 'http://localhost:8000';
 const SIGNALING_SERVER = "https://chatter-backend-4i7g.onrender.com";
@@ -44,16 +43,7 @@ const MainFrame = () => {
 
   const [searchCode, setSearchCode] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
-const [isAdmin, setIsAdmin] = useState(false);
 
-// Replace the entire /admin/me useEffect with this:
-useEffect(() => {
-  if (user?.isAdmin) {
-    setIsAdmin(true);
-  } else {
-    setIsAdmin(false);
-  }
-}, [user]);
   // Open sign-in panel if URL has ?openSignIn=true
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -158,12 +148,11 @@ useEffect(() => {
       setShow(true);
     }
   };
-  const token = localStorage.getItem("token");
+
   return (
     <div>
 
       <div>
-      
         <section className='headerSc'>
           <div className="container-fluid">
             <div className="row">
@@ -179,7 +168,7 @@ useEffect(() => {
                   <div className="searchLoginCnt">
 
                     {/* Meeting code search */}
-                    <form className='meetingCodeFinder' onSubmit={handleSearch} style={{ display: 'flex' }}>
+                    <form className='meetingCodeFinder miniHider' onSubmit={handleSearch} style={{ display: 'flex' }}>
                       <input
                         type="text"
                         placeholder='Enter Meeting Code'
@@ -194,7 +183,7 @@ useEffect(() => {
                       <div style={styles.loggedInNav}>
 
                         {/* My Meetings button */}
-                        <button
+                        <button className='myMtMinihider'
                           style={styles.myMeetingsBtn}
                           onClick={() => navigate('/my-meetings')}
                         >
@@ -230,15 +219,6 @@ useEffect(() => {
                                   </div>
                                 </div>
                                 <div style={styles.dropdownDivider} />
-                                
-{user?.isAdmin && (
-  <button
-    style={styles.dropdownItem}
-    onClick={() => { navigate('/admin'); setDropdownOpen(false); }}
-  >
-    <ShieldIcon /> Admin Panel
-  </button>
-)}
                                 <button
                                   style={styles.dropdownItem}
                                   onClick={() => { navigate('/my-meetings'); setDropdownOpen(false); }}
@@ -252,22 +232,13 @@ useEffect(() => {
                                   <PlusIcon /> New Meeting
                                 </button>
                                 <div style={styles.dropdownDivider} />
-                                
-                                
-                                
-                                
                                 <button
                                   style={{ ...styles.dropdownItem, color: '#EF4444' }}
                                   onClick={handleSignOut}
                                 >
                                   <SignOutIcon /> Sign Out
                                 </button>
-
-
-                             
-                             
                               </div>
-
                             </>
                           )}
                         </div>
@@ -527,11 +498,3 @@ const styles = {
 };
 
 export default MainFrame
-
-
-const ShieldIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-    stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-  </svg>
-);

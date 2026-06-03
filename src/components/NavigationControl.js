@@ -9,6 +9,9 @@ import NavMicClose from '../assets/micCloseIcon.svg';
 import DummyCam from '../assets/dummyCam Image.svg';
 import DummyShare from '../assets/dummyScreenShare Image.svg';
 import DummyEmoji from '../assets/dummyEmoji Image.svg';
+import ScreenShare from '../assets/OGScreenShareIcon.svg';
+import ReactionEmoji from '../assets/ReactionEmoji.svg';
+import InviteParticipant from '../assets/InviteParticipantIcon.svg';
 import MoreIcon from '../assets/moreOptionIcon.svg';
 import NavSeperator from '../assets/navSeperator.svg';
 import DummyStopMeet from '../assets/dummyStopIcon Image.svg';
@@ -25,14 +28,14 @@ import MainMicOff from "../assets/micCloseIcon.svg";
 import MainCamOff from "../assets/videoCloseIcon.svg";
 
 // ─── ADD: inline invite icon (no new asset needed) ───────────────────────────
-const InviteIconSVG = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-    <circle cx="9" cy="7" r="4" />
-    <line x1="19" y1="8" x2="19" y2="14" />
-    <line x1="22" y1="11" x2="16" y2="11" />
-  </svg>
-);
+// const InviteIconSVG = () => (
+//   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+//     <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+//     <circle cx="9" cy="7" r="4" />
+//     <line x1="19" y1="8" x2="19" y2="14" />
+//     <line x1="22" y1="11" x2="16" y2="11" />
+//   </svg>
+// );
 
 const NavigationControl = ({
   isMicMuted, isCamMuted, toggleMic, toggleCam,
@@ -166,18 +169,18 @@ const NavigationControl = ({
         <div className="row">
           <div className="navControllerCnt">
             <button className='iconBtn' onClick={toggleAudio}>
-              <img src={isMicMuted ? MainMicOff : NavMicOpen} alt="Mic" />
+              <img className='img-fluid' src={isMicMuted ? MainMicOff : NavMicOpen} alt="Mic" />
             </button>
-            <div onClick={toggleVideo}>
-              <img src={isCamMuted ? MainCamOff : DummyCam} alt="Cam" />
+            <div className='iconBtn' onClick={toggleVideo}>
+              <img className='img-fluid' src={isCamMuted ? MainCamOff : DummyCam} alt="Cam" />
             </div>
-            <div onClick={handleScreenShare}>
-              <img src={DummyShare} alt="Share" />
+            <div className='iconBtn' onClick={handleScreenShare}>
+              <img className='img-fluid' src={ScreenShare} alt="Share" />
             </div>
 
             {/* Emoji reactions */}
-            <div style={{ position: "relative" }}>
-              <img src={DummyEmoji} alt="Emoji" onClick={() => setShowReactions(p => !p)} style={{ cursor: "pointer" }} />
+            <div className='iconBtn' style={{ position: "relative" }}>
+              <img className='img-fluid' src={ReactionEmoji} alt="Emoji" onClick={() => setShowReactions(p => !p)} style={{ cursor: "pointer" }} />
               {showReactions && (
                 <div style={{
                   position: "absolute", bottom: "50px", background: "#1f1f2e",
@@ -199,7 +202,7 @@ const NavigationControl = ({
                 aria-expanded="false"
                 style={{ position: 'relative' }}
               >
-                <img src={MoreIcon} alt="More Icon" />
+                <img className='img-fluid' src={MoreIcon} alt="More Icon" />
                 {waitingCount > 0 && (
                   <span style={{
                     position: 'absolute', top: -4, right: -4,
@@ -231,7 +234,7 @@ const NavigationControl = ({
                     style={{ display: 'flex', alignItems: 'center', gap: 8 }}
                   >
                     <div style={{ color: '#a5b4fc', display: 'flex', alignItems: 'center' }}>
-                      <InviteIconSVG />
+                      <img src={InviteParticipant} alt="Invite Participants Icon" />
                     </div>
                     Invite People
                   </button>

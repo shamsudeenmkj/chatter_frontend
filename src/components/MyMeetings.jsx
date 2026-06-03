@@ -115,7 +115,7 @@ const MeetingCard = ({ m }) => {
     const startsSoon = soonMs > 0 && soonMs < 15 * 60 * 1000;
 
     return (
-      <div style={s.meetingCard}>
+      <div style={s.meetingCard} className="testJoinCnt">
         <div style={s.meetingCardLeft}>
           <div style={s.meetingIconWrap}>
             {isScheduled ? <CalIcon /> : <FlashIcon />}
@@ -176,11 +176,18 @@ const MeetingCard = ({ m }) => {
     <div style={s.page}>
       <div style={s.container}>
         {/* header */}
-        <div style={s.header}>
-          <div>
-            <h1 style={s.pageTitle}>My Meetings</h1>
-            <p style={s.pageSubtitle}>Your scheduled and instant meetings</p>
-          </div>
+        <div className="myMeetingTitleCnt" style={s.header}>
+          <div className="backArrowCnt">
+            <button style={styles.backBtn} onClick={() => navigate(-1)} title="Back">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+          </button>
+              <div className="myMeetingtitleCnt">
+                <h1 style={s.pageTitle}>My Meetings</h1>
+                <p style={s.pageSubtitle}>Your scheduled and instant meetings</p>
+              </div>
+          </div>          
           <button style={s.newBtn} onClick={() => navigate("/create-room")}>
             + New Meeting
           </button>
@@ -291,5 +298,11 @@ const s = {
     fontFamily: "Montserrat, sans-serif",
   },
 };
+const styles = {
+  backBtn: {
+    background: "#F3F4F6", border: "none", borderRadius: 8, padding: "8px 10px",
+    cursor: "pointer", display: "flex", alignItems: "center", color: "#374151", flexShrink: 0,
+  },
+}
 
 export default MyMeetings;
