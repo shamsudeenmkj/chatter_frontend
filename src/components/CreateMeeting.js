@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { io } from "socket.io-client";
 
 const SIGNALING_SERVER = "https://chatter-backend-4i7g.onrender.com";
 // const SIGNALING_SERVER = "http://localhost:8000";
@@ -148,13 +147,11 @@ const CreateMeeting = () => {
 
   /* form state */
   const [title, setTitle]                   = useState("");
-  const [meetingType, setMeetingType]       = useState("instant");
+  const [description, setDescription]       = useState("");
   const [scheduledAt, setScheduledAt]       = useState("");
   const [durationMinutes, setDurationMinutes] = useState(60);
   const [requireApproval, setRequireApproval] = useState(false);
   const [selectedUsers, setSelectedUsers]   = useState([]);
-  const [hasVideo, setHasVideo]             = useState(true);
-  const [hasAudio, setHasAudio]             = useState(true);
 
   /* data state */
   const [allUsers, setAllUsers]       = useState([]);
@@ -175,6 +172,7 @@ const CreateMeeting = () => {
   /* ── Fetch all users once ─────────────────────────────────────────────────── */
   useEffect(() => {
     setLoadingUsers(true);
+    
     fetch(`${SIGNALING_SERVER}/users`, { headers: authHeaders() })
       .then((r) => r.json())
       .then((d) => { if (d.success) setAllUsers(d.users); })
@@ -186,10 +184,7 @@ const CreateMeeting = () => {
 const checkAvailability = useCallback(() => {
   let start, end;
 
-  if (meetingType === "instant") {
-    start = new Date().toISOString();
-    end   = new Date(Date.now() + 60 * 60000).toISOString();
-  } else if (scheduledAt) {
+  if (scheduledAt) {
     const startISO = localToISO(scheduledAt);
     start = startISO;
     end   = new Date(
@@ -220,14 +215,11 @@ const checkAvailability = useCallback(() => {
     })
     .catch(() => {})
     .finally(() => setLoadingAvail(false));
-}, [scheduledAt, durationMinutes, meetingType]);
+}, [scheduledAt, durationMinutes]);
   /* ── NEW: Check YOUR OWN availability ────────────────────────────────────── */
   const checkSelfAvailability = useCallback(() => {
     let start, end;
-    if (meetingType === "instant") {
-      start = new Date().toISOString();
-      end   = new Date(Date.now() + 60 * 60000).toISOString();
-    } else if (scheduledAt) {
+    if (scheduledAt) {
       const startISO = localToISO(scheduledAt);
       start = startISO;
       end   = new Date(new Date(startISO).getTime() + durationMinutes * 60000).toISOString();
@@ -247,7 +239,7 @@ const checkAvailability = useCallback(() => {
       })
       .catch(() => {})
       .finally(() => setLoadingSelf(false));
-  }, [scheduledAt, durationMinutes, meetingType]);
+  }, [scheduledAt, durationMinutes]);
 
   useEffect(() => { checkAvailability(); },     [checkAvailability]);
   useEffect(() => { checkSelfAvailability(); }, [checkSelfAvailability]);
@@ -279,48 +271,20 @@ const checkAvailability = useCallback(() => {
     e.preventDefault();
     setError("");
     if (!title.trim()) { setError("Meeting title is required."); return; }
-    if (meetingType === "scheduled" && !scheduledAt) {
+    if (!scheduledAt) {
       setError("Please pick a date and time.");
       return;
     }
 
     setSubmitting(true);
 
-    if (meetingType === "instant") {
-      const token = localStorage.getItem("token");
-      const user  = JSON.parse(localStorage.getItem("user") || "{}");
-      const socket = io(SIGNALING_SERVER, { auth: { token } });
-
-      socket.on("connect", () => {
-        socket.emit(
-          "create-room",
-          { name: user.name || "Host", hasVideo, hasAudio, title, invitedUsers: selectedUsers, requireApproval },
-          ({ success, roomId }) => {
-            socket.disconnect();
-            if (success) {
-              navigate(`/room/${roomId}`);
-            } else {
-              setError("Failed to create room. Please try again.");
-              setSubmitting(false);
-            }
-          }
-        );
-      });
-
-      socket.on("connect_error", () => {
-        setError("Could not connect to server. Please try again.");
-        setSubmitting(false);
-      });
-      return;
-    }
-
-    /* scheduled */
     try {
       const res = await fetch(`${SIGNALING_SERVER}/schedule-meeting`, {
         method: "POST",
         headers: authHeaders(),
         body: JSON.stringify({
           title,
+          description,
           scheduledAt:     localToISO(scheduledAt),
           durationMinutes,
           invitedUsers:    selectedUsers,
@@ -370,7 +334,7 @@ const checkAvailability = useCallback(() => {
           </button>
           <div className="createMeetingtitleCnt">
             <h1 style={styles.cardTitle}>New Meeting</h1>
-            <p style={styles.cardSubtitle}>Set up an instant or scheduled meeting</p>
+            <p style={styles.cardSubtitle}>Schedule a meeting</p>
           </div>
         </div>
 
@@ -389,76 +353,61 @@ const checkAvailability = useCallback(() => {
             />
           </div>
 
-          {/* ── Type Toggle ── */}
+          {/* ── Description ── */}
           <div style={styles.fieldGroup}>
-            <label style={styles.label}>Type</label>
-            <div style={styles.toggleRow}>
-              {["instant", "scheduled"].map((t) => (
-                <button
-                  key={t} type="button"
-                  style={{ ...styles.toggleBtn, ...(meetingType === t ? styles.toggleBtnActive : {}) }}
-                  onClick={() => setMeetingType(t)}
-                >
-                  {t === "instant" ? <><CalIcon /> Instant</> : <><ClockIcon /> Schedule</>}
-                </button>
-              ))}
+            <label style={styles.label}>Description <span style={{ fontWeight: 400, color: "#9CA3AF" }}>(optional)</span></label>
+            <textarea
+              className="newMtIpStyle"
+              style={{ ...styles.input, resize: "vertical", minHeight: 72, lineHeight: 1.5 }}
+              placeholder="Add agenda, notes, or a meeting link…"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+            />
+          </div>
+
+          {/* ── Date & Duration ── */}
+          <div style={styles.twoCol} className="micCamOnOffCnt">
+            <div style={styles.fieldGroup}>
+              <label style={styles.label}>Date & Time</label>
+              <input
+                style={styles.input}
+                type="datetime-local"
+                min={nowLocal}
+                value={scheduledAt}
+                onChange={(e) => setScheduledAt(e.target.value)}
+              />
+            </div>
+            <div style={styles.fieldGroup}>
+              <label style={styles.label}>Duration</label>
+              <select
+                style={styles.input}
+                value={durationMinutes}
+                onChange={(e) => setDurationMinutes(Number(e.target.value))}
+              >
+                {DURATIONS.map((d) => (
+                  <option key={d.value} value={d.value}>{d.label}</option>
+                ))}
+              </select>
             </div>
           </div>
 
-          {/* ── Scheduled fields ── */}
-          {meetingType === "scheduled" && (
-            <>
-              <div style={styles.twoCol} className="micCamOnOffCnt">
-                <div style={styles.fieldGroup}>
-                  <label style={styles.label}>Date & Time</label>
-                  <input
-                    style={styles.input}
-                    type="datetime-local"
-                    min={nowLocal}
-                    value={scheduledAt}
-                    onChange={(e) => setScheduledAt(e.target.value)}
-                  />
-                </div>
-                <div style={styles.fieldGroup}>
-                  <label style={styles.label}>Duration</label>
-                  <select
-                    style={styles.input}
-                    value={durationMinutes}
-                    onChange={(e) => setDurationMinutes(Number(e.target.value))}
-                  >
-                    {DURATIONS.map((d) => (
-                      <option key={d.value} value={d.value}>{d.label}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {scheduledAt && (
-                <div style={styles.timeWindow}>
-                  <CalIcon size={14} />
-                  <span>
-                    {new Date(localToISO(scheduledAt)).toLocaleString("en-US", {
-                      weekday: "short", month: "short", day: "numeric",
-                      hour: "numeric", minute: "2-digit",
-                    })}
-                    {" → "}
-                    {new Date(
-                      new Date(localToISO(scheduledAt)).getTime() + durationMinutes * 60000
-                    ).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
-                  </span>
-                  {(loadingAvail || loadingSelf) && (
-                    <span style={styles.loadingDot}>Checking availability…</span>
-                  )}
-                </div>
+          {scheduledAt && (
+            <div style={styles.timeWindow}>
+              <CalIcon size={14} />
+              <span>
+                {new Date(localToISO(scheduledAt)).toLocaleString("en-US", {
+                  weekday: "short", month: "short", day: "numeric",
+                  hour: "numeric", minute: "2-digit",
+                })}
+                {" → "}
+                {new Date(
+                  new Date(localToISO(scheduledAt)).getTime() + durationMinutes * 60000
+                ).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+              </span>
+              {(loadingAvail || loadingSelf) && (
+                <span style={styles.loadingDot}>Checking availability…</span>
               )}
-            </>
-          )}
-
-          {/* ── Media toggles (instant only) ── */}
-          {meetingType === "instant" && (
-            <div style={styles.mediaRow} className="micCamOnOffCnt">
-              <MediaToggle icon={<MicIcon />} label="Microphone" active={hasAudio} onToggle={() => setHasAudio((v) => !v)} />
-              <MediaToggle icon={<CamIcon />} label="Camera"     active={hasVideo} onToggle={() => setHasVideo((v) => !v)} />
             </div>
           )}
 
@@ -583,11 +532,7 @@ const checkAvailability = useCallback(() => {
             style={{ ...styles.submitBtn, opacity: submitting ? 0.7 : 1, cursor: submitting ? "not-allowed" : "pointer" }}
             disabled={submitting}
           >
-            {submitting
-              ? "Creating…"
-              : meetingType === "instant"
-              ? "Start Meeting Now"
-              : "Schedule Meeting"}
+            {submitting ? "Scheduling…" : "Schedule Meeting"}
           </button>
           </div> 
           </div>                   

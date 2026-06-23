@@ -8,6 +8,22 @@ import JoinRoom from './components/JoinRoom';
 import CreateMeeting from './components/CreateMeeting';
 import MyMeetings from './components/MyMeetings';
 import GuestLogin from './components/Guestlogin';
+import MeetingDetails from './components/MeetingDetails';
+import AdminPanel from './components/AdminPanel';
+
+// ── Guard /admin — only signed-in admins may enter ─────────────────────────
+const AdminGuard = () => {
+  const token = localStorage.getItem('token');
+  const userRaw = localStorage.getItem('user');
+  if (!token) return <Navigate to="/" replace />;
+  try {
+    const user = JSON.parse(userRaw || '{}');
+    if (!user.isAdmin) return <Navigate to="/" replace />;
+  } catch {
+    return <Navigate to="/" replace />;
+  }
+  return <AdminPanel />;
+};
 
 // Handles deep-link from Flutter: stores token then redirects
 const AutoLogin = () => {
@@ -92,6 +108,9 @@ const App = () => (
           <Route path="/guest-login"  element={<GuestLogin />} />
           <Route path="/create-room"  element={<CreateMeeting />} />
           <Route path="/my-meetings"  element={<MyMeetings />} />
+          <Route path="/meeting-details/:roomId"  element={<MeetingDetails />} />
+          <Route path="/admin"  element={<AdminGuard />} />
+
           {/* /signup removed — registration is app-only */}
         </Routes>
       </BrowserRouter>

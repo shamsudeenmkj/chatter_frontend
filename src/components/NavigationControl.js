@@ -45,6 +45,7 @@ const NavigationControl = ({
   onToggleChat,
   onToggleParticipants,
   waitingCount = 0,
+  chatUnreadCount = 0,
   onToggleWaiting,
   isHost = false,
   onToggleInvite,
@@ -216,6 +217,21 @@ const NavigationControl = ({
                     {waitingCount > 9 ? '9+' : waitingCount}
                   </span>
                 )}
+
+
+                {chatUnreadCount > 0 && (
+  <span style={{
+    position: 'absolute', top: -4, left: -4,
+    background: '#EF4444', color: '#fff',
+    borderRadius: '50%', width: 18, height: 18,
+    fontSize: 10, fontWeight: 700,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    border: '2px solid #fff', lineHeight: 1,
+    pointerEvents: 'none', fontFamily: 'Montserrat, sans-serif',
+  }}>
+    {chatUnreadCount > 9 ? '9+' : chatUnreadCount}
+  </span>
+)}
               </button>
 
               <ul className="dropdown-menu">
@@ -279,9 +295,34 @@ const NavigationControl = ({
                           borderRadius: 20, padding: '1px 7px', fontSize: 11, fontWeight: 700,
                         }}>{waitingCount}</span>
                       )}
+
+
+                      
                     </button>
                   </li>
                 )}
+
+                
+
+
+
+                <li>
+  <button className="dropdown-item" onClick={onToggleChat} style={{ position: "relative" }}>
+    <div><img src={ChatIcon} alt="Chat Icon" /></div>
+    Chats
+    {chatUnreadCount > 0 && (
+      <span style={{
+        position: "absolute", top: -4, right: -4,
+        background: "#EF4444", color: "#fff", borderRadius: 20,
+        minWidth: 18, height: 18, fontSize: 10, fontWeight: 700,
+        display: "inline-flex", alignItems: "center", justifyContent: "center",
+        padding: "0 5px",
+      }}>
+        {chatUnreadCount > 99 ? "99+" : chatUnreadCount}
+      </span>
+    )}
+  </button>
+</li>
 
                 <li className='mobileController'>
                   <button className="dropdown-item" onClick={onToggleParticipants}>
@@ -289,12 +330,7 @@ const NavigationControl = ({
                     Participants
                   </button>
                 </li>
-                <li>
-                  <button className="dropdown-item" onClick={onToggleChat}>
-                    <div><img src={ChatIcon} alt="Chat Icon" /></div>
-                    Chats
-                  </button>
-                </li>
+             
                 <li className='mobileController'>
                   <button className="dropdown-item">
                     <div><img src={PollIcon} alt="Poll Icon" /></div>

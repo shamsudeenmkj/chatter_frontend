@@ -12,16 +12,103 @@ import UserCamOff from "../assets/userCamOff.png";
 import UserMoreIcon from "../assets/userMoreIcon.png";
 import PollImage from "../assets/pollImage.png";
 
+const SERVER_URL = "https://chatter-backend-4i7g.onrender.com";
+
 // ─── Helper: deterministic private room key ───────────────────────────────────
-// Given two socket IDs, always produces the same key regardless of order.
 function makePrivateRoomId(idA, idB) {
   return [idA, idB].sort().join("_");
 }
 
-const ChatCard = ({ userList, onToggleChat, hostId, privateMessages, setPrivateMessages, privateUnread, setPrivateUnread, mySocketIdRef: mySocketIdRefProp }) => {
+// ─── File bubble ──────────────────────────────────────────────────────────────
+function FileBubble({ msg }) {
+  const isImage = msg.kind === "image" || (msg.fileMimeType || "").startsWith("image/");
+  const fileName = msg.fileName || msg.text || "file";
+  const fileUrl  = msg.fileUrl;
+  const fileSize = msg.fileSize;
+
+  // Swap /file/ → /download/ to force browser download
+  const downloadUrl = fileUrl ? fileUrl.replace("/file/", "/download/") : fileUrl;
+
+  const sizeLabel = fileSize
+    ? fileSize > 1024 * 1024
+      ? `${(fileSize / 1024 / 1024).toFixed(1)} MB`
+      : `${Math.round(fileSize / 1024)} KB`
+    : null;
+
+  if (isImage) {
+    return (
+      
+      <a  href={downloadUrl}
+        download={fileName}        // ← forces download
+        rel="noreferrer"
+        style={{ display: "block" }}
+      >
+        <img
+          src={fileUrl}            // ← still use /file/ for preview
+          alt={fileName}
+          style={{
+            maxWidth: 200,
+            maxHeight: 180,
+            borderRadius: 8,
+            display: "block",
+            marginTop: 4,
+            objectFit: "cover",
+            cursor: "pointer",
+            border: "1px solid rgba(255,255,255,0.1)",
+          }}
+        />
+        {sizeLabel && <p style={{ color: "#aaa", fontSize: 10, margin: "2px 0 0" }}>{sizeLabel}</p>}
+      </a>
+    );
+  }
+
+  return (
+    <a
+      href={downloadUrl}
+      download={fileName}          // ← forces download
+      rel="noreferrer"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "7px 11px",
+        background: "rgba(25,113,255,0.12)",
+        border: "1px solid rgba(25,113,255,0.25)",
+        borderRadius: 8,
+        textDecoration: "none",
+        marginTop: 4,
+        maxWidth: 220,
+      }}
+    >
+      <span style={{ fontSize: 20 }}>📎</span>
+      <span style={{ overflow: "hidden" }}>
+        <p style={{ color: "#fff", fontSize: 12, fontWeight: 600, margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 140 }}>
+          {fileName}
+        </p>
+        {sizeLabel && <p style={{ color: "#aaa", fontSize: 10, margin: 0 }}>{sizeLabel}</p>}
+      </span>
+    </a>
+  );
+}
+
+const ChatCard = ({
+  userList, onToggleChat, hostId,
+  privateMessages, setPrivateMessages, privateUnread, setPrivateUnread,
+  mySocketIdRef: mySocketIdRefProp,
+  defaultTabIndex = 0,
+  groupMessages: groupMessagesProp, setGroupMessages: setGroupMessagesProp,
+  lastSentFileMessageIdRef: lastSentFileMessageIdRefProp,  groupUnread = 0,           // ← add
+  onClearGroupUnread, activeChatTabRef,   
+
+   activePoll: activePollProp,
+  setActivePoll: setActivePollProp,
+  pollHistory: pollHistoryProp,
+  setPollHistory: setPollHistoryProp,
+  myVote: myVoteProp,
+  setMyVote: setMyVoteProp,
+}) => {
   const socketRef = useSocket();
   const { roomId } = useParams();
-
   const user = (() => {
     try {
       const u = localStorage.getItem("user");
@@ -35,79 +122,63 @@ const ChatCard = ({ userList, onToggleChat, hostId, privateMessages, setPrivateM
 
   // ── State ──────────────────────────────────────────────────────────────────
   const [participants, setParticipants]       = useState([]);
-  const [groupMessages, setGroupMessages]     = useState([]);
-  // privateMessages and privateUnread are lifted to MeetingSection — received as props.
+  // const [groupMessages, setGroupMessages]     = useState([]);
   const [groupText, setGroupText]             = useState("");
   const [privateText, setPrivateText]         = useState("");
-
-  // activePrivateUser: the participant whose DM panel is currently open.
-  // null = no panel open (but messages are still being received & stored).
   const [activePrivateUser, setActivePrivateUser] = useState(null);
-
   const [unreadCount, setUnreadCount]   = useState(0);
-  const [activeTabIndex, setActiveTabIndex] = useState(0);
+ const [activeTabIndex, setActiveTabIndex] = useState(defaultTabIndex);
 
+  // File upload state
+  const [groupUploading, setGroupUploading]     = useState(false);
+  const [privateUploading, setPrivateUploading] = useState(false);
 
-  // Poll state (unchanged)
-  const [activePoll, setActivePoll]         = useState(null);
-  const [myVote, setMyVote]                 = useState(null);
+  // Poll state
   const [showCreatePoll, setShowCreatePoll] = useState(false);
   const [isEditingPoll, setIsEditingPoll]   = useState(false);
   const [pollQuestion, setPollQuestion]     = useState("");
   const [pollOptions, setPollOptions]       = useState(["", ""]);
-
+// Poll state
   // ── Refs ───────────────────────────────────────────────────────────────────
   const activeTabRef      = useRef(0);
   const activePrivateRef  = useRef(null);
   const groupChatEndRef   = useRef(null);
   const privateChatEndRef = useRef(null);
-  // mySocketIdRef: always call useRef (Rules of Hooks — no conditional).
-  // When MeetingSection passes mySocketIdRefProp we use that ref object;
-  // the local ref below is just a stable fallback slot, never written to.
+  const groupFileInputRef   = useRef(null);
+  const privateFileInputRef = useRef(null);
   const _localSocketIdRef = useRef(null);
   const mySocketIdRef = mySocketIdRefProp ?? _localSocketIdRef;
+const [_localGroupMessages, _setLocalGroupMessages] = useState([]);
+const groupMessages    = groupMessagesProp    ?? _localGroupMessages;
+const setGroupMessages = setGroupMessagesProp ?? _setLocalGroupMessages;
+
+const _localLastSentFileMessageIdRef = useRef(null);
+const lastSentFileMessageIdRef = lastSentFileMessageIdRefProp ?? _localLastSentFileMessageIdRef;
 
 
 
-  // ── Build participants list + PRE-INITIALISE private message buckets ───────
-  //
-  // This is the core fix. Previously private message buckets only existed after
-  // `openPrivateChat` was called (i.e. the user clicked a name). That meant:
-  //   - Incoming messages before the first click were stored under an orphan key
-  //     that the UI never looked up.
-  //   - The chat box was only shown after a click, so there was no way to see
-  //     unread messages without clicking first.
-  //
-  // Now, as soon as a participant appears in userList we:
-  //   1. Add them to the participants array (with their privateRoomId computed).
-  //   2. Ensure their privateMessages bucket exists (empty if no messages yet).
-  //
+const [_localActivePoll, _setLocalActivePoll]   = useState(null);
+const [_localPollHistory, _setLocalPollHistory] = useState([]);
+const [_localMyVote, _setLocalMyVote]           = useState(null);
+
+const activePoll   = activePollProp   ?? _localActivePoll;
+const setActivePoll = setActivePollProp ?? _setLocalActivePoll;
+const pollHistory   = pollHistoryProp   ?? _localPollHistory;
+const setPollHistory = setPollHistoryProp ?? _setLocalPollHistory;
+const myVote        = myVoteProp        ?? _localMyVote;
+const setMyVote     = setMyVoteProp     ?? _setLocalMyVote;
+  // ── Build participants list ────────────────────────────────────────────────
   useEffect(() => {
     const socket = socketRef.current;
     const myId   = socket?.id || "me";
     mySocketIdRef.current = myId;
 
-    const myEntry = {
-      userId: myId,
-      name:   myName,
-      muted:  false,
-      videoOff: false,
-      authId: null,
-      _isMe:  true,
-      privateRoomId: null, // self has no private room
-    };
-
     const others = (userList || []).map(p => ({
       ...p,
-      // Attach the canonical key right on the participant object.
-      // Every piece of code that needs the key reads it from here — one
-      // source of truth, no re-computation, no mismatches.
       privateRoomId: makePrivateRoomId(myId, p.userId),
     }));
 
-    setParticipants([myEntry, ...others]);
-
-    // Message buckets are pre-initialised in MeetingSection — nothing to do here.
+    setParticipants([...others]);
   }, [userList, myName]);
 
   // ── Keep activePrivateRef in sync ─────────────────────────────────────────
@@ -116,33 +187,12 @@ const ChatCard = ({ userList, onToggleChat, hostId, privateMessages, setPrivateM
   }, [activePrivateUser]);
 
   // ── Socket listeners ───────────────────────────────────────────────────────
-  useEffect(() => {
-    const socket = socketRef.current;
-    if (!socket) return;
-
-    socket.emit("join-chat", { roomId });
-
-    // ── Group chat ──
-    socket.on("react:meeting:message", (msg) => {
-      setGroupMessages(prev => [...prev, msg]);
-      if (activeTabRef.current !== 1) setUnreadCount(c => c + 1);
-    });
-
-    // react:meeting:private is handled in MeetingSection (always-on).
-
-    // ── Polls ──
-    socket.on("react:meeting:poll:new",    ({ poll }) => { setActivePoll(poll); setMyVote(null); });
-    socket.on("react:meeting:poll:update", ({ poll }) => setActivePoll(poll));
-    socket.on("react:meeting:poll:closed", ()         => { setActivePoll(null); setMyVote(null); });
-
-    return () => {
-      socket.off("react:meeting:message");
-      // react:meeting:private is cleaned up in MeetingSection
-      socket.off("react:meeting:poll:new");
-      socket.off("react:meeting:poll:update");
-      socket.off("react:meeting:poll:closed");
-    };
-  }, [socketRef.current]);
+useEffect(() => {
+  const socket = socketRef.current;
+  if (!socket) return;
+  // nothing poll-related here anymore
+  return () => {};
+}, [socketRef.current]);
 
   // ── Auto-scroll ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -153,21 +203,25 @@ const ChatCard = ({ userList, onToggleChat, hostId, privateMessages, setPrivateM
     privateChatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [privateMessages, activePrivateUser]);
 
+    useEffect(() => {
+    setActiveTabIndex(defaultTabIndex);
+    if (activeChatTabRef) activeChatTabRef.current = defaultTabIndex;
+  }, [defaultTabIndex]);
   // ── Tab change ─────────────────────────────────────────────────────────────
   const handleTabSelect = (index) => {
     activeTabRef.current = index;
     setActiveTabIndex(index);
-    if (index === 1) setUnreadCount(0);
+    if (activeChatTabRef) activeChatTabRef.current = index;
+    if (index === 1) onClearGroupUnread?.();   // viewing Chats tab → clear group badge
   };
 
+  
+
   // ── Open / close private chat panel ───────────────────────────────────────
-  // Now this just changes which participant's panel is visible —
-  // the message bucket already exists regardless.
   const openPrivateChat = (participant) => {
     if (!participant || participant._isMe) return;
-    setActivePrivateUser(participant); // participant already has privateRoomId
+    setActivePrivateUser(participant);
     activePrivateRef.current = participant;
-    // Clear unread for this person when we open their panel
     setPrivateUnread(prev => ({ ...prev, [participant.userId]: 0 }));
   };
 
@@ -199,9 +253,9 @@ const ChatCard = ({ userList, onToggleChat, hostId, privateMessages, setPrivateM
     const myId   = mySocketIdRef.current || socket.id;
 
     const msg = {
-      roomId:     activePrivateUser.privateRoomId, // sorted-IDs key
+      roomId:     activePrivateUser.privateRoomId,
       senderId:   myId,
-      receiverId: activePrivateUser.userId,        // server routes to this socket
+      receiverId: activePrivateUser.userId,
       name:       myName,
       userName:   myName,
       message:    privateText,
@@ -209,22 +263,127 @@ const ChatCard = ({ userList, onToggleChat, hostId, privateMessages, setPrivateM
     };
 
     socket.emit("react:meeting:private", msg);
-
-    // Add sender-side copy immediately (server echo also arrives but dedup by
-    // the fact that the socket listener stores ALL messages including own echoes —
-    // we DON'T add it here a second time; let the echo be the single source).
-    // Actually: the server echoes back to the sender, so we let that be the
-    // single write. No local optimistic insert needed, avoiding double messages.
-
+    const key = activePrivateUser.privateRoomId;
+setPrivateMessages(prev => ({
+  ...prev,
+  [key]: [...(prev[key] || []), { ...msg, _isFile: false }],
+}));
     setPrivateText("");
   };
 
-  // ── Poll handlers (unchanged) ──────────────────────────────────────────────
+  // ── Upload file (group chat) ───────────────────────────────────────────────
+  const handleGroupFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";           // reset so same file can be re-picked
+    setGroupUploading(true);
+    try {
+      const token = localStorage.getItem("token");
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("roomId", roomId);
+      fd.append("senderName", myName);
+
+      const headers = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
+      const res  = await fetch(`${SERVER_URL}/web/upload-file`, { method: "POST", headers, body: fd });
+      const data = await res.json();
+
+      if (!data.success) { alert("Upload failed: " + (data.message || "unknown error")); return; }
+ lastSentFileMessageIdRef.current = data.messageId;
+
+      // Broadcast to room via socket
+      socketRef.current.emit("react:meeting:file", {
+        roomId,
+        messageId:    data.messageId,
+        fileId:       data.fileId,
+        fileUrl:      data.fileUrl,
+        fileName:     data.fileName,
+        fileSize:     data.fileSize,
+        fileMimeType: data.fileMimeType,
+        kind:         data.kind,
+        sentAt:       data.sentAt,
+        senderName:   myName,
+      });
+    } catch (err) {
+      alert("Upload error: " + err.message);
+    } finally {
+      setGroupUploading(false);
+    }
+  };
+
+  // ── Upload file (private chat) ─────────────────────────────────────────────
+const handlePrivateFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !activePrivateUser) return;
+    e.target.value = "";
+    setPrivateUploading(true);
+    try {
+      const token = localStorage.getItem("token");
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("roomId", roomId);
+      fd.append("senderName", myName);
+
+      const headers = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
+      const res  = await fetch(`${SERVER_URL}/web/upload-file`, { method: "POST", headers, body: fd });
+      const data = await res.json();
+
+      if (!data.success) { alert("Upload failed: " + (data.message || "unknown error")); return; }
+
+      const socket = socketRef.current;
+      const myId   = mySocketIdRef.current || socket.id;
+
+      const msg = {
+        roomId:       activePrivateUser.privateRoomId,
+        senderId:     myId,
+        receiverId:   activePrivateUser.userId,
+        name:         myName,
+        userName:     myName,
+        message:      data.fileName,
+        time:         new Date().toLocaleTimeString(),
+        _isFile:      true,                  // ← file flag
+        fileUrl:      data.fileUrl,
+        fileName:     data.fileName,
+        fileSize:     data.fileSize,
+        fileMimeType: data.fileMimeType,
+        kind:         data.kind,
+      };
+
+      socket.emit("react:meeting:private", msg);
+
+      // ✅ ADD THIS — show file bubble immediately for the sender
+      const key = activePrivateUser.privateRoomId;
+      setPrivateMessages(prev => ({
+        ...prev,
+        [key]: [
+          ...(prev[key] || []),
+          {
+            ...msg,
+            _isFile: true, // <- flag
+          }
+        ],
+      }));
+
+    } catch (err) {
+      alert("Upload error: " + err.message);
+    } finally {
+      setPrivateUploading(false);
+    }
+  };
+
+
+  // ── Poll handlers ──────────────────────────────────────────────────────────
   const handleVote = (optionId) => {
     if (myVote === optionId) return;
     setMyVote(optionId);
     socketRef.current.emit("react:meeting:poll:vote", { roomId, pollId: activePoll.pollId, optionId });
   };
+
+  // create poll ---------------------------------
 
   const createPoll = () => {
     const validOptions = pollOptions.filter(o => o.trim());
@@ -265,7 +424,7 @@ const ChatCard = ({ userList, onToggleChat, hostId, privateMessages, setPrivateM
   };
 
   // ── Derived ────────────────────────────────────────────────────────────────
-  const hasUnread          = unreadCount > 0 && activeTabIndex !== 1;
+const hasUnread = groupUnread > 0 && activeTabIndex !== 1;
   const totalPrivateUnread = Object.values(privateUnread).reduce((s, c) => s + c, 0);
   const hasPrivateUnread   = totalPrivateUnread > 0;
 
@@ -315,12 +474,24 @@ const ChatCard = ({ userList, onToggleChat, hostId, privateMessages, setPrivateM
           <TabPanel>
             <div className="commonChatPollHt participantCnt">
 
-              {/* Participant list */}
-              {participants.map((p, i) => {
+              {
+                participants.length===0?
+
+                     <div style={{ display:"flex",justifyContent:"center",alignItems:"center",height:"100%"}}>
+                  
+                  <p style={{ color: "#aaa", marginTop: 10 }}>No Participants Other Then You</p>
+                  
+                </div>
+
+
+                :
+              
+              participants.map((p, i) => {
                 const isHost     = p.authId?.toString() === hostId?.toString();
                 const isMe       = p._isMe === true;
                 const unreadPriv = privateUnread[p.userId] || 0;
                 const isActive   = activePrivateUser?.userId === p.userId;
+                const isStreaming = p.stream != null;
 
                 return (
                   <div
@@ -329,7 +500,6 @@ const ChatCard = ({ userList, onToggleChat, hostId, privateMessages, setPrivateM
                     onClick={() => openPrivateChat(p)}
                     style={{
                       cursor: isMe ? "default" : "pointer",
-                      // Highlight the currently open DM
                       background: isActive ? "rgba(25,113,255,0.08)" : undefined,
                       borderRadius: isActive ? 8 : undefined,
                     }}
@@ -363,7 +533,7 @@ const ChatCard = ({ userList, onToggleChat, hostId, privateMessages, setPrivateM
                     </div>
                     <div className="micAndCamCnt">
                       <div title={p.muted ? "Mic Off" : "Mic On"}><img src={p.muted ? UserMicOff : UserMicOn} alt="Mic" /></div>
-                      <div title={p.videoOff ? "Cam Off" : "Cam On"}><img src={p.videoOff ? UserCamOff : UserCamOn} alt="Cam" /></div>
+                      <div title={isStreaming ? "Cam Off" : "Cam On"}><img src={isStreaming ? UserCamOn : UserCamOff} alt="Cam" /></div>
                       <div><img src={UserMoreIcon} alt="More" /></div>
                     </div>
                   </div>
@@ -371,9 +541,6 @@ const ChatCard = ({ userList, onToggleChat, hostId, privateMessages, setPrivateM
               })}
 
               {/* ── Private chat panel ── */}
-              {/* Shown when a participant is selected. The message bucket always
-                  exists now, so messages sent before the panel was opened are
-                  visible immediately. */}
               {activePrivateUser && (
                 <div className="privateChatBox">
                   <div className="hdAndClose">
@@ -381,29 +548,56 @@ const ChatCard = ({ userList, onToggleChat, hostId, privateMessages, setPrivateM
                     <button onClick={closePrivateChat} style={{ marginTop: 6 }}>Close X</button>
                   </div>
 
-                  <div className="privateChatMessages" onScroll={handlePrivateChatScroll}>
-                    {(privateMessages[activePrivateUser.privateRoomId] || []).length === 0 ? (
-                      <p style={{ color: "#666", fontSize: 12, textAlign: "center", marginTop: 20 }}>
-                        No messages yet. Say hi! 👋
-                      </p>
-                    ) : (
-                      (privateMessages[activePrivateUser.privateRoomId] || []).map((msg, i) => {
-                        const mine = msg.senderId === (mySocketIdRef.current || socketRef.current?.id);
-                        return (
-                          <div key={i} style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start" }}>
-                            <div className="privateChatBgColor" style={{ marginBottom: 6 }}>
-                              <p className="privateChatUserName"><b>{msg.userName || msg.name}</b></p>
-                              <p className="privateMsg">{msg.message}</p>
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                    <div ref={privateChatEndRef} />
-                  </div>
+                  <div 
+  className="privateChatMessages" 
+  onScroll={handlePrivateChatScroll}
+  style={{ overflowY: "auto", position: "relative", zIndex: 1 }}  // ← add this
+>
+  {(privateMessages[activePrivateUser.privateRoomId] || []).length === 0 ? (
+    <p style={{ color: "#666", fontSize: 12, textAlign: "center", marginTop: 20 }}>
+      No messages yet. Say hi! 👋
+    </p>
+  ) : (
+    (privateMessages[activePrivateUser.privateRoomId] || []).map((msg, i) => {
+
+      // ✅ CORRECT
+const mine = msg.senderId === (mySocketIdRef.current || socketRef.current?.id);
+      return (
+        <div key={i} style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start" }}>
+          <div className="privateChatBgColor" style={{ marginBottom: 6, position: "relative", zIndex: 1 }}>
+            <p className="privateChatUserName"><b>{msg.userName || msg.name}</b></p>
+            {msg._isFile || msg.fileUrl ? (   // ← check fileUrl too, not just _isFile
+              <FileBubble msg={msg} />
+            ) : (
+              <p className="privateMsg">{msg.message}</p>
+            )}
+          </div>
+        </div>
+      );
+    })
+  )}
+  <div ref={privateChatEndRef} />
+</div>
+
+                  {/* hidden file input for private chat */}
+                  <input
+                    ref={privateFileInputRef}
+                    type="file"
+                    style={{ display: "none" }}
+                    onChange={handlePrivateFileChange}
+                  />
 
                   <div className="msgBoxCnt">
-                    <button><img src={DocAttachIcon} alt="Attachment" /></button>
+                    <button
+                      onClick={() => privateFileInputRef.current?.click()}
+                      disabled={privateUploading}
+                      title="Send file"
+                      style={{ opacity: privateUploading ? 0.5 : 1, cursor: privateUploading ? "not-allowed" : "pointer" }}
+                    >
+                      {privateUploading
+                        ? <span style={{ fontSize: 14 }}>⏳</span>
+                        : <img src={DocAttachIcon} alt="Attachment" />}
+                    </button>
                     <input
                       value={privateText}
                       placeholder={`Message ${activePrivateUser.name}`}
@@ -421,7 +615,11 @@ const ChatCard = ({ userList, onToggleChat, hostId, privateMessages, setPrivateM
           <TabPanel>
             <div className="commonChatPollHt" style={{ overflowY: "auto", flex: 1 }}>
               {groupMessages.map((msg, i) => {
-                const mine = msg.id === socketRef.current?.id;
+               const mine =
+  (msg._myUserId && msg.senderId === msg._myUserId) ||
+  (msg.id && msg.id === socketRef.current?.id)
+                      console.log("mine => ", msg.id,"  =>  ", msg.senderId ,"  =>  ",socketRef.current?.id)
+
                 return (
                   <div className="participantsChatCnt" key={i} style={{ justifyContent: mine ? "flex-end" : "flex-start" }}>
                     <div className="chatProfile"><div>{msg.name?.[0]}</div></div>
@@ -431,7 +629,11 @@ const ChatCard = ({ userList, onToggleChat, hostId, privateMessages, setPrivateM
                           <p className="userName">{msg.name}</p>
                           <p className="timer">{msg.time}</p>
                         </div>
-                        <p>{msg.text}</p>
+                        {msg._isFile ? (
+                          <FileBubble msg={msg} />
+                        ) : (
+                          <p>{msg.text}</p>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -439,14 +641,35 @@ const ChatCard = ({ userList, onToggleChat, hostId, privateMessages, setPrivateM
               })}
               <div ref={groupChatEndRef} />
             </div>
+
+            {/* hidden file input for group chat */}
+            <input
+              ref={groupFileInputRef}
+              type="file"
+              style={{ display: "none" }}
+              onChange={handleGroupFileChange}
+            />
+
             <div className="msgBoxCnt">
-              <button><img src={DocAttachIcon} alt="Attachment" /></button>
+              <button
+                onClick={() => groupFileInputRef.current?.click()}
+                disabled={groupUploading}
+                title="Send file"
+                style={{ opacity: groupUploading ? 0.5 : 1, cursor: groupUploading ? "not-allowed" : "pointer" }}
+              >
+                {groupUploading
+                  ? <span style={{ fontSize: 14 }}>⏳</span>
+                  : <img src={DocAttachIcon} alt="Attachment" />}
+              </button>
               <input type="text" placeholder="Type Something..." value={groupText}
                 onChange={e => setGroupText(e.target.value)}
                 onKeyDown={e => e.key === "Enter" && sendGroupMessage()} />
               <button onClick={sendGroupMessage}><img src={SentBtn} alt="Send" /></button>
             </div>
           </TabPanel>
+
+
+          
 
           {/* ── POLL TAB ── */}
           <TabPanel>

@@ -35,6 +35,13 @@ const MeetingSection = () => {
   
   
   const [activePanel, setActivePanel] = useState(null);
+const [defaultChatTab, setDefaultChatTab] = useState(0);
+
+useEffect(() => {
+  activePanelRef.current = activePanel;
+  // Only clear group unread if user is actually on the Chats tab (index 1)
+  if (activePanel === 'chat' && activeChatTabRef.current === 1) setGroupUnread(0);
+}, [activePanel]);
   
   
   
@@ -78,7 +85,17 @@ const MeetingSection = () => {
 const writableStreamRef = useRef(null);
 const pendingWritesRef = useRef(0);
 const recordingStartTimeRef = useRef(null);
+const [groupMessages, setGroupMessages] = useState([]);
+const [groupUnread, setGroupUnread]     = useState(0);
+const activePanelRef = useRef(activePanel);
+const lastSentFileMessageIdRef = useRef(null);
 
+
+const [activePoll, setActivePoll]   = useState(null);
+const [pollHistory, setPollHistory] = useState([]);
+const [myVote, setMyVote]           = useState(null);
+
+const activeChatTabRef = useRef(0); // 0=Participants, 1=Chats, 2=Poll
   // useEffect(() => {
   //   const storedUser = localStorage.getItem("user");
   //   if (!storedUser) return navigate(`/join/${roomId}`);
@@ -122,6 +139,16 @@ const recordingStartTimeRef = useRef(null);
 
   //   return cleanup;
   // }, []);
+
+
+  const myUserId = (() => {
+  try {
+    const u = localStorage.getItem("user");
+    if (u) return JSON.parse(u).id;
+    return null;
+  } catch { return null; }
+})();
+
 
 useEffect(() => {
   const token = localStorage.getItem("token");
@@ -337,11 +364,23 @@ useEffect(() => {
       const myId          = mySocketIdRef.current || socket.id;
       const otherSocketId = msg.senderId === myId ? msg.receiverId : msg.senderId;
       const key           = [myId, otherSocketId].sort().join('_');
-      setPrivateMessages(prev => ({ ...prev, [key]: [...(prev[key] || []), msg] }));
+
+       if (msg.senderId === myId) return;
+      setPrivateMessages(prev => ({ ...prev, [key]: [...(prev[key] || []),{
+        ...msg,                              // ← spread msg first, not nest it
+        _isFile: !!(msg._isFile || msg.fileUrl),
+        fileUrl: msg.fileUrl || null,
+        fileName: msg.fileName || null,
+        fileSize: msg.fileSize || null,
+        fileMimeType: msg.fileMimeType || null,
+        kind: msg.kind || "text",
+      }      
+      ] }));
       const isFromMe = msg.senderId === myId;
-      if (!isFromMe) {
-        setPrivateUnread(prev => ({ ...prev, [msg.senderId]: (prev[msg.senderId] || 0) + 1 }));
-      }
+    // ✅ CORRECT — only badge if chat panel is closed
+if (!isFromMe) {
+  setPrivateUnread(prev => ({ ...prev, [msg.senderId]: (prev[msg.senderId] || 0) + 1 }));
+}
     };
     socket.on('react:meeting:private', onPrivate);
     return () => {
@@ -349,6 +388,107 @@ useEffect(() => {
       socket.off('connect', onConnect);
     };
   }, [socketRef.current]);
+
+
+useEffect(() => {
+  const socket = socketRef.current;
+  if (!socket || !roomId) return;
+
+  const joinChat = () => {
+    // Reset poll state on every (re)join so stale data never shows
+    setActivePoll(null);
+    setPollHistory([]);
+    setMyVote(null);
+    socket.emit("join-chat", { roomId });
+  };
+  joinChat();
+  socket.on("connect", joinChat);
+
+ const onChatHistory = (history) => {
+  if (!Array.isArray(history) || history.length === 0) return;
+  const tagged = history.map(m => ({ ...m, _myUserId: myUserId }));
+  setGroupMessages(prev => (prev.length > 0 ? prev : tagged));
+};
+
+const onGroupMessage = (msg) => {
+  // Normalize: live msgs use socket.id as `id`, history uses userId as `senderId`.
+  // Store both so ChatCard can identify "mine" regardless of source.
+  setGroupMessages(prev => [...prev, { ...msg, _myUserId: myUserId }]);
+  if (activePanelRef.current !== 'chat' || activeChatTabRef.current !== 1) {
+    setGroupUnread(c => c + 1);
+  }
+};
+
+const onGroupFile = (msg) => {
+  const isMine = msg.messageId && lastSentFileMessageIdRef.current === msg.messageId;
+  const bubble = {
+    id:           isMine ? socket.id : msg.senderId,
+    senderId:     msg.senderId,
+    _myUserId:    myUserId,           // ← add this
+    name:         msg.senderName,
+    kind:         msg.kind,
+    fileUrl:      msg.fileUrl,
+    fileName:     msg.fileName,
+    fileSize:     msg.fileSize,
+    fileMimeType: msg.fileMimeType,
+    time:         msg.sentAt ? new Date(msg.sentAt).toLocaleTimeString() : new Date().toLocaleTimeString(),
+    _isFile:      true,
+  };
+  setGroupMessages(prev => [...prev, bubble]);
+  if (activePanelRef.current !== 'chat') setGroupUnread(c => c + 1);
+};
+
+  // ── Poll listeners — must live here so they catch events before ChatCard mounts ──
+  const onPollHistory = ({ polls }) => {
+    setPollHistory(polls);
+    const open = polls.find(p => !p.isClosed);
+    setActivePoll(open || null);
+    setMyVote(null);
+  };
+
+  const onPollNew = ({ poll }) => {
+    setActivePoll(poll);
+    setMyVote(null);
+    setPollHistory(prev => {
+      const exists = prev.some(p => p.pollId === poll.pollId);
+      return exists
+        ? prev.map(p => p.pollId === poll.pollId ? { ...poll, isClosed: false } : p)
+        : [...prev, { ...poll, isClosed: false }];
+    });
+  };
+
+  const onPollUpdate = ({ poll }) => {
+    setActivePoll(poll);
+    setPollHistory(prev =>
+      prev.map(p => p.pollId === poll.pollId ? { ...poll, isClosed: false } : p)
+    );
+  };
+
+  const onPollClosed = () => {
+    setActivePoll(null);
+    setMyVote(null);
+    setPollHistory(prev => prev.map(p => !p.isClosed ? { ...p, isClosed: true } : p));
+  };
+
+  socket.on("chat-history",              onChatHistory);
+  socket.on("react:meeting:message",     onGroupMessage);
+  socket.on("react:meeting:file",        onGroupFile);
+  socket.on("poll-history",              onPollHistory);
+  socket.on("react:meeting:poll:new",    onPollNew);
+  socket.on("react:meeting:poll:update", onPollUpdate);
+  socket.on("react:meeting:poll:closed", onPollClosed);
+
+  return () => {
+    socket.off("connect",                joinChat);
+    socket.off("chat-history",           onChatHistory);
+    socket.off("react:meeting:message",  onGroupMessage);
+    socket.off("react:meeting:file",     onGroupFile);
+    socket.off("poll-history",           onPollHistory);
+    socket.off("react:meeting:poll:new",    onPollNew);
+    socket.off("react:meeting:poll:update", onPollUpdate);
+    socket.off("react:meeting:poll:closed", onPollClosed);
+  };
+}, [socketRef.current, roomId]);
 
   function cleanup() {
     const socket = socketRef.current;
@@ -970,17 +1110,42 @@ function formatDuration(secs) {
     style={{ height: "calc(100vh - 130px)", animation: "slideInRight 0.35s ease" }}>
 
     {/* Chat */}
-    {activePanel === "chat" && (
-      <ChatCard
-  userList={remoteUsers}
-  onToggleChat={() => setActivePanel(p => p === "chat" ? null : "chat")}
-  hostId={hostId}
-  privateMessages={privateMessages}
-  setPrivateMessages={setPrivateMessages}
-  privateUnread={privateUnread}
-  setPrivateUnread={setPrivateUnread}
-  mySocketIdRef={mySocketIdRef}/>
-    )}
+  {activePanel === "chat" && (
+  <ChatCard
+    userList={remoteUsers}
+    defaultTabIndex={defaultChatTab}
+// In the NavigationControl and inline ChatCard toggle:
+onToggleChat={() => {
+  setActivePanel(p => {
+    if (p === 'chat') return null;
+    // Auto-jump to Chats tab if there's a group unread waiting
+    setDefaultChatTab(groupUnread > 0 ? 1 : 0);
+    return 'chat';
+  });
+}}
+
+
+    hostId={hostId}
+    privateMessages={privateMessages}
+    setPrivateMessages={setPrivateMessages}
+    privateUnread={privateUnread}
+    setPrivateUnread={setPrivateUnread}
+    mySocketIdRef={mySocketIdRef}
+    groupMessages={groupMessages}
+    setGroupMessages={setGroupMessages}
+    lastSentFileMessageIdRef={lastSentFileMessageIdRef}
+     groupUnread={groupUnread}
+      activeChatTabRef={activeChatTabRef} 
+  onClearGroupUnread={() => setGroupUnread(0)}
+
+   activePoll={activePoll}
+  setActivePoll={setActivePoll}
+  pollHistory={pollHistory}
+  setPollHistory={setPollHistory}
+  myVote={myVote}
+  setMyVote={setMyVote}
+  />
+)}
 
     {/* Participants */}
     {activePanel === "participants" && (
@@ -1179,6 +1344,8 @@ isCamMuted={isCamMuted}
   onToggleChat={() => setActivePanel(p => p === "chat" ? null : "chat")}
   onToggleParticipants={() => setActivePanel(p => p === "participants" ? null : "participants")}
 waitingCount={isHost ? waitingRoom.length : 0}
+  chatUnreadCount={groupUnread + Object.values(privateUnread).reduce((a, b) => a + b, 0)}
+
   onToggleWaiting={() => setActivePanel(p => p === 'waiting' ? null : 'waiting')}
   onToggleInvite={() => setActivePanel(p => p === 'invite' ? null : 'invite')}
   isRecording={isRecording}
@@ -1195,5 +1362,4 @@ waitingCount={isHost ? waitingRoom.length : 0}
     </section>
   );
 };
-
 export default MeetingSection;

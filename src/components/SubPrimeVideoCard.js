@@ -266,7 +266,7 @@ if (activeStream && hasVideoTracks) {
           maxWidth: "calc(100% - 48px)",
           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
         }}>
-          {user.authId === hostId && <div className="host-badge">👑 Host</div>}
+          {user.authId === hostId && <div className="host-badge" style={{color:"yellow"}} >(Host)</div>}
           {user.isScreenSharing && (
             <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#22c55e", display: "inline-block", flexShrink: 0 }} />
           )}
@@ -330,7 +330,7 @@ if (activeStream && hasVideoTracks) {
               display: "flex", alignItems: "center", gap: 5, fontWeight: 600,
               pointerEvents: "auto",
             }}
-          ><UnpinIcon /> Unpin</button>
+          ><UnpinIcon /></button>
         )}
 
         {/* Pin hint on hover — only in gallery tiles */}
@@ -341,7 +341,7 @@ if (activeStream && hasVideoTracks) {
             borderRadius: 20, padding: "4px 10px 4px 8px",
             display: "flex", alignItems: "center", gap: 5,
             fontSize: 11, color: "#fff", fontFamily: "'DM Sans', sans-serif", fontWeight: 600,
-          }}><PinIcon /> Pin</div>
+          }}><PinIcon /></div>
         )}
       </div>
     </div>
@@ -465,7 +465,7 @@ function Pagination({ total, page, setPage }) {
 }
 
 function LayoutBadge({ mode }) {
-  const labels = { SCREEN: "Screen Share", SPOTLIGHT: "Spotlight", PINNED: "Pinned" };
+  const labels = { SCREEN: "Screen Share", SPOTLIGHT: "Spotlight", PINNED: "" };
   const label = labels[mode];
   if (!label) return null;
   return (

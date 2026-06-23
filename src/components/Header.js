@@ -123,6 +123,14 @@ const Header = ({ onAutoSignIn }) => {
                               >
                                 <PlusIcon /> New Meeting
                               </button>
+                              {user?.isAdmin && (
+                                <button
+                                  style={styles.dropdownItem}
+                                  onClick={() => { navigate('/admin'); setDropdownOpen(false); }}
+                                >
+                                  ⬡ Admin Panel
+                                </button>
+                              )}
                               <div style={styles.dropdownDivider} />
                               <button
                                 style={{ ...styles.dropdownItem, color: '#EF4444' }}

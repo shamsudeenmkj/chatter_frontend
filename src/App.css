@@ -719,12 +719,93 @@ label {
 .backArrowCnt.joinMt button{
     background-color: rgb(243, 244, 246) !important; 
 }
+/* My Meetings Page Css */
+.calendericViewRadios{
+        padding: 10px 14px;
+    border-radius: 8px;
+    background-color: #ffffff;
+}
+.calendericViewRadios label{
+    margin: 0 !important;
+}
+.dateTileGrid{
+    gap: 8px;
+    padding: 14px 18px 18px 18px;
+}
+.weekTileGrid{
+    gap: 8px;
+    padding: 18px 18px 0px 18px;
+    border-bottom: none !important;
+}
+.weekTileGrid div{
+    padding: 0px !important;
+    font-size: 14px !important;
+    font-weight: 500 !important;
+}
+.monthAndYearCnt{
+        background-color: #FFFFFF;
+    border-radius: 8px;
+    margin-bottom: 18px;
+    padding: 10px 14px !important;
+}
+.monthAndYearCnt .monthAndYear span{
+    font-size: 16px !important;
+    font-weight: 600 !important;
+}
+.meetingListCnt{
+    border: transparent;
+}
+.meetingListCnt .meetingListCardTitle{
+    font-size: 16px !important;
+    font-weight: 600 !important;
+}
+.roomIdLabel{
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    color: #000000 !important;
+}
+.scheduledLabel{
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    color: #000000 !important;
+}
+.roomIdvalue{
+    font-weight: 400 !important;
+    font-size: 13px !important;
+}
+.scheduledvalue{
+    font-weight: 400 !important;
+    font-size: 13px !important;
+}
+.desLabel{
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    color: #000000 !important;
+}
+.desValue{
+    color: #7A7A7A !important;
+    font-size: 13px !important;
+    font-weight: 400 !important;
+}
+.singleDayAndDateIconAndTitleCnt{
+    flex-direction: column;
+}
 @media (min-width: 1200px) {
     .container{
         max-width: 1330px !important;
     }
 }
 @media screen and (min-width: 992px) and (max-width: 1199.9px){
+    .topRowNumAndIcon{
+        flex-direction: column;
+    }
+    .bottomRowTitleAndPlus{
+        flex-direction: column;
+    gap: 4px;
+    }
+    .topAndBottomRowDateCnt{
+        gap: 12px;
+    }
     .CreateVideoCnt video{
             height: 50vh !important;
     }
@@ -747,6 +828,37 @@ label {
     }
 }
 @media screen and (min-width: 768px) and (max-width: 991.9px){
+    .sideListParentCnt{
+            width: 100% !important;
+    max-height: fit-content !important;
+    }
+    .topRowNumAndIcon svg,img{
+        display: none;
+    }
+    .sideListParentCnt .listWrapCnt{
+        flex-direction: row !important;
+    flex-wrap: wrap;
+    }
+    .dateMonthWeekSorterCnt{
+        margin: 0 auto;
+    }
+    .topRowNumAndIcon{
+        flex-direction: column;
+    }
+    .bottomRowTitleAndPlus{
+        flex-direction: column;
+    gap: 4px;
+    }
+    .topAndBottomRowDateCnt{
+        gap: 4px;
+    }
+    .listWrapCnt{
+        display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    }
+    .meetingListAndCalendarCnt{
+        flex-direction: column;
+    }
     .participantsSc p:last-child{
         display: none;
     }
@@ -759,6 +871,40 @@ label {
     }
 }
 @media screen and (min-width: 576px) and (max-width: 767.9px){
+    .sideListParentCnt{
+            width: 100% !important;
+    max-height: fit-content !important;
+    }
+    .topRowNumAndIcon svg,img{
+        display: none;
+    }
+    .sideListParentCnt .listWrapCnt{
+        flex-direction: row !important;
+    flex-wrap: wrap;
+    }
+    .dateMonthWeekSorterCnt{
+        margin: 0 auto;
+    }
+    .topRowNumAndIcon{
+        flex-direction: column;
+    }
+    .bottomRowTitleAndPlus{
+        flex-direction: column;
+    gap: 4px;
+    }
+    .topAndBottomRowDateCnt{
+        gap: 4px;
+    }
+    .listWrapCnt{
+        display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    }
+    .meetingListAndCalendarCnt{
+        flex-direction: column;
+    }
+    .bottomRowTitleAndPlus span{
+        display: none;
+    }
     .participantsCnt{
         display: none;
     }
@@ -775,6 +921,9 @@ label {
     }
 }
 @media (max-width: 420.9px){
+    .singleDayAndDateCnt{
+            width: 90px !important;
+    }
     /* .navControllerCnt div{
         width: 34px;
         height: 34px;
@@ -802,6 +951,47 @@ label {
     }
 }
 @media (max-width: 575.9px){
+    .overAllSingleDayAndDateCnt{
+        min-height: 250px !important;
+}
+    .sideListParentCnt{
+            width: 100% !important;
+    max-height: fit-content !important;
+    }
+    .topRowNumAndIcon svg,img{
+        display: none;
+    }
+    .sideListParentCnt .listWrapCnt{
+        flex-direction: row !important;
+    flex-wrap: wrap;
+    }
+    .dateMonthWeekSorterCnt{
+        margin: 0 auto;
+    }
+    .topRowNumAndIcon{
+        flex-direction: column;
+    }
+    .bottomRowTitleAndPlus{
+        flex-direction: column;
+    gap: 4px;
+    }
+    .topAndBottomRowDateCnt{
+        gap: 4px;
+                min-height: 68px !important;
+    }
+    .listWrapCnt{
+        display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    }
+    .meetingListAndCalendarCnt{
+        flex-direction: column;
+    }
+    .bottomRowTitleAndPlus span{
+        display: none;
+    }
+    .dateMonthWeekSorterCnt{
+        gap: 12px;
+    }    
     .navigationControllerSc .navControllerCnt{
             gap: 8px;
     }
@@ -879,4 +1069,28 @@ label {
         display: none !important;
     }
 }
-
+@media (max-width: 460.9px){
+    .dateMonthWeekSorterCnt{
+        flex-direction: column-reverse;
+    }
+    .weekTileGrid {
+    gap: 4px;
+    padding: 10px 4px 0px 4px;
+    border-bottom: none !important;
+    }
+    .weekTileGrid div {
+    font-size: 12px !important;
+}
+.dateTileGrid {
+    gap: 4px;
+    padding: 10px 4px 4px 4px;
+}
+.topAndBottomRowDateCnt {
+        padding: 4px !important;
+                min-height: 60px !important;
+    }
+        .listWrapCnt {
+        display: grid !important;
+        grid-template-columns: repeat(1, 1fr) !important;
+    }
+}
