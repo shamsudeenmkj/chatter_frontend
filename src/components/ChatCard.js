@@ -236,15 +236,18 @@ useEffect(() => {
   };
 
   // ── Send group message ─────────────────────────────────────────────────────
-  const sendGroupMessage = () => {
-    if (!groupText.trim()) return;
-    socketRef.current.emit("react:meeting:message", {
-      roomId,
-      name: myName,
-      text: groupText,
-    });
-    setGroupText("");
-  };
+const sendGroupMessage = () => {
+  if (!groupText.trim()) return;
+  const socket = socketRef.current;
+  // Ensure we're in the chat room before sending
+  socket.emit("join-chat", { roomId });
+  socket.emit("react:meeting:message", {
+    roomId,
+    name: myName,
+    text: groupText,
+  });
+  setGroupText("");
+};
 
   // ── Send private message ───────────────────────────────────────────────────
   const sendPrivateMessage = () => {
@@ -259,7 +262,7 @@ useEffect(() => {
       name:       myName,
       userName:   myName,
       message:    privateText,
-      time:       new Date().toLocaleTimeString(),
+sentAt:     new Date().toISOString(),
     };
 
     socket.emit("react:meeting:private", msg);
@@ -344,7 +347,7 @@ const handlePrivateFileChange = async (e) => {
         name:         myName,
         userName:     myName,
         message:      data.fileName,
-        time:         new Date().toLocaleTimeString(),
+sentAt:     new Date().toISOString(),
         _isFile:      true,                  // ← file flag
         fileUrl:      data.fileUrl,
         fileName:     data.fileName,
@@ -627,7 +630,14 @@ const mine = msg.senderId === (mySocketIdRef.current || socketRef.current?.id);
                       <div className="userCnt">
                         <div className="timeCnt">
                           <p className="userName">{msg.name}</p>
-                          <p className="timer">{msg.time}</p>
+
+<p className="timer">
+  {msg.sentAt
+    ? new Date(msg.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : msg.time || ''}
+</p>
+
+
                         </div>
                         {msg._isFile ? (
                           <FileBubble msg={msg} />

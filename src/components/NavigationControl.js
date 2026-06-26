@@ -54,7 +54,7 @@ const NavigationControl = ({
   onStartRecording,
   onStopRecording,
   recordingDuration = 0,
-  formatDuration,
+  formatDuration,onLeave
 }) => {
 
   const REACTIONS = ["👍", "👏", "❤️", "😂", "😮", "🔥"];
@@ -126,12 +126,24 @@ const NavigationControl = ({
     setMainVideo(localStreamRef.current || null);
   };
 
+  // ── Persist the guest's manual mic/cam choice so a page refresh doesn't
+  //    silently turn things back on. Keyed per room so it doesn't leak
+  //    across different meetings.
+  const _persistMediaState = (patch) => {
+    try {
+      const key = `mediaState_${roomId}`;
+      const prev = JSON.parse(localStorage.getItem(key) || '{}');
+      localStorage.setItem(key, JSON.stringify({ ...prev, ...patch }));
+    } catch { /* ignore storage errors */ }
+  };
+
   const toggleVideo = () => {
     const track = localStreamRef.current?.getVideoTracks()[0];
     if (!track) return;
     track.enabled = !track.enabled;
     toggleCam(!track.enabled);
     socketRef.current?.emit("video-toggle", { roomId, videoOff: !track.enabled });
+    _persistMediaState({ camMuted: !track.enabled });
   };
 
   const toggleAudio = () => {
@@ -140,24 +152,30 @@ const NavigationControl = ({
     track.enabled = !track.enabled;
     toggleMic(!track.enabled);
     socketRef.current?.emit("audio-toggle", { roomId, muted: !track.enabled });
+    _persistMediaState({ micMuted: !track.enabled });
   };
 
   const handleLeaveMeeting = () => {
     const socket = socketRef.current;
     if (!socket) return;
-    socket.emit("leave-room", { roomId });
-    Object.values(peersRef.current).forEach(peer => peer.close());
-    peersRef.current = {};
+
+    onLeave?.();  // ← triggers MeetingSection cleanup
+
     localStreamRef.current?.getTracks().forEach(track => track.stop());
     if (screenStreamRef.current) {
       screenStreamRef.current.getTracks().forEach(track => track.stop());
       screenStreamRef.current = null;
     }
-    socket.disconnect();
+
+    socket.emit("leave-room", { roomId });
+    // No socket.disconnect() here
+
+    const isGuest = !localStorage.getItem("token");  // check before removing
     localStorage.removeItem("guest");
-    const isGuest = !localStorage.getItem("token");
+    localStorage.removeItem(`mediaState_${roomId}`);
     navigate(isGuest ? `/guest-login?roomId=${roomId}` : "/");
   };
+
 
   function handleReaction(emoji) {
     socketRef.current.emit("reaction", { roomId, emoji });

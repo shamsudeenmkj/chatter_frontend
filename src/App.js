@@ -93,7 +93,7 @@ const RoomGuard = () => {
     } catch {}
   }
 
-  return <Navigate to={`/join-room?roomId=${roomId}`} replace />;
+  return <Navigate to={`/guest-login?roomId=${roomId}`} replace />;
 };
 const App = () => (
   <SocketProvider>
@@ -103,7 +103,7 @@ const App = () => (
           <Route path="/"             element={<LandingPage />} />
           <Route path="/autologin"    element={<AutoLogin />} />   {/* ← NEW */}
           <Route path="/join-room"    element={<JoinRoom />} />
-          <Route path="/room/:roomId" element={<MeetingSection />} />
+          <Route path="/room/:roomId" element={<RoomGuard />} />
           <Route path="/join/:roomId" element={<JoinRedirect />} />
           <Route path="/guest-login"  element={<GuestLogin />} />
           <Route path="/create-room"  element={<CreateMeeting />} />

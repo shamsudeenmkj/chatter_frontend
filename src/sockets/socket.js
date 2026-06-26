@@ -21,9 +21,22 @@ export const SocketProvider = ({ children }) => {
       try { guestName = JSON.parse(guestRaw).name || "Guest"; } catch { /* keep default */ }
     }
 
+    // ── Stable guest identity across refreshes ─────────────────────────────
+    // Guests have no userId, so a page refresh creates a brand-new socket
+    // with no way for the backend to know "this is the same person who was
+    // already admitted into the room". We generate one random id per browser
+    // and keep reusing it — the backend matches on this to skip the waiting
+    // room again and to carry over the correct mic/cam state on rejoin.
+    let guestId = localStorage.getItem("guestId");
+    if (!guestId) {
+      guestId = (window.crypto?.randomUUID?.() ||
+        `g_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+      localStorage.setItem("guestId", guestId);
+    }
+
     const authPayload = token
       ? { token, clientType: "react" }
-      : { isGuest: true, guestName };
+      : { isGuest: true, guestName, guestId };
 
     socketRef.current = io(SIGNALING_SERVER, {
       auth: authPayload,

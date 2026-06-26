@@ -66,6 +66,8 @@ useEffect(() => {
   
   const [name, setName] = useState("");
   const [remoteUsers, setRemoteUsers] = useState([]);
+  const remoteUsersRef = useRef([]); // always-fresh mirror, used inside createPeer
+  useEffect(() => { remoteUsersRef.current = remoteUsers; }, [remoteUsers]);
   const [mainVideo, setMainVideo] = useState(null);
   const [isSharing, setIsSharing] = useState(false);
   const [hostId, setHostId] = useState(null);
@@ -174,22 +176,50 @@ useEffect(() => {
     setMyAuthId(null);
 
     async function initGuestRoom() {
-      // Get media (best-effort: video+audio → audio only → nothing)
+      // ── Restore the guest's last toggle choice for this room (refresh/rejoin
+      //    case). If nothing is saved yet, this is a brand-new join.
+      const stateKey = `mediaState_${roomId}`;
+      let saved = null;
+      try { saved = JSON.parse(localStorage.getItem(stateKey) || "null"); } catch { /* ignore */ }
+      const isFreshJoin = !saved;
+
+      // Get media (best-effort: video+audio → audio only → nothing).
+      // This is what triggers the browser's permission prompt up front.
       let stream = null;
-      let micMuted = false;
-      let camMuted = false;
+      let hasMic = false;
+      let hasCam = false;
 
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        hasMic = true; hasCam = true;
       } catch {
         try {
           stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          camMuted = true;
+          hasMic = true;
         } catch {
-          micMuted = true;
-          camMuted = true;
+          stream = null;
         }
       }
+
+      // Default behaviour: guest joins with mic & cam OFF, even if permission
+      // was granted. They turn it on themselves once inside the meeting.
+      // On refresh, instead re-apply whatever they had chosen last time.
+      let micMuted = isFreshJoin ? true : (saved.micMuted ?? true);
+      let camMuted = isFreshJoin ? true : (saved.camMuted ?? true);
+
+      // Can't unmute something that has no track/device.
+      if (!hasMic) micMuted = true;
+      if (!hasCam) camMuted = true;
+
+      if (stream) {
+        const audioTrack = stream.getAudioTracks()[0];
+        const videoTrack = stream.getVideoTracks()[0];
+        if (audioTrack) audioTrack.enabled = !micMuted;
+        if (videoTrack) videoTrack.enabled = !camMuted;
+      }
+
+      // Persist so a refresh mid-meeting keeps this exact state.
+      try { localStorage.setItem(stateKey, JSON.stringify({ micMuted, camMuted })); } catch { /* ignore */ }
 
       localStreamRef.current = stream;
       setMainVideo(stream);
@@ -404,10 +434,16 @@ useEffect(() => {
   joinChat();
   socket.on("connect", joinChat);
 
- const onChatHistory = (history) => {
+const onChatHistory = (history) => {
   if (!Array.isArray(history) || history.length === 0) return;
   const tagged = history.map(m => ({ ...m, _myUserId: myUserId }));
-  setGroupMessages(prev => (prev.length > 0 ? prev : tagged));
+  setGroupMessages(prev => {
+    if (prev.length === 0) return tagged;
+    // Merge: keep live messages, prepend history without duplicates
+    const existingIds = new Set(prev.map(m => m.messageId).filter(Boolean));
+    const newHistory = tagged.filter(m => !m.messageId || !existingIds.has(m.messageId));
+    return [...newHistory, ...prev];
+  });
 };
 
 const onGroupMessage = (msg) => {
@@ -431,8 +467,8 @@ const onGroupFile = (msg) => {
     fileName:     msg.fileName,
     fileSize:     msg.fileSize,
     fileMimeType: msg.fileMimeType,
-    time:         msg.sentAt ? new Date(msg.sentAt).toLocaleTimeString() : new Date().toLocaleTimeString(),
-    _isFile:      true,
+sentAt:       msg.sentAt || new Date().toISOString(),
+_isFile:      true,
   };
   setGroupMessages(prev => [...prev, bubble]);
   if (activePanelRef.current !== 'chat') setGroupUnread(c => c + 1);
@@ -529,7 +565,8 @@ socket.off('reaction');
 
     // isGuest:true tells the server to use the already-approved guest path
     // (server's admitUserToRoom was already called when host admitted them)
-    socket.emit("join-room", { roomId, name: userName, muted: micMuted, isGuest });
+    const guestId = localStorage.getItem("guestId") || null;
+    socket.emit("join-room", { roomId, name: userName, muted: micMuted, isGuest, guestId });
 
 socket.on('all-users', ({ users, host, waitingRoom: wr }) => {
   setHostId(host?.toString());
@@ -709,8 +746,27 @@ socket.on('waiting-room-update', ({ waitingRoom: wr }) => {
 // Then register them below as before
   }
 
-function createPeer(userId, userName,micMuted,authId) {
+function createPeer(userId, userName, micMuted, authId) {
   if (peersRef.current[userId]) return;
+
+  // ── Dedupe by stable identity (authId/guestId), not just socket.id ──────
+  // A guest refresh gets a brand-new socket.id, so without this check the
+  // old tile/peer (keyed by the stale socket.id) never gets cleaned up and
+  // we'd end up with two tiles for the same person. If we already have a
+  // peer for this authId under a different (now-stale) socket.id, tear that
+  // one down first.
+  if (authId) {
+    const staleUserId = Object.keys(peersRef.current).find(uid => {
+      const ru = remoteUsersRef.current.find(u => u.userId === uid);
+      return ru && ru.authId && ru.authId.toString() === authId.toString() && uid !== userId;
+    });
+    if (staleUserId) {
+      peersRef.current[staleUserId]?.close();
+      delete peersRef.current[staleUserId];
+      delete pendingCandidatesRef.current[staleUserId];
+      setRemoteUsers(prev => prev.filter(u => u.userId !== staleUserId));
+    }
+  }
 
   const peer = new RTCPeerConnection(ICE_SERVERS);
   peersRef.current[userId] = peer;
@@ -1353,6 +1409,9 @@ waitingCount={isHost ? waitingRoom.length : 0}
   onStopRecording={stopRecording}
   recordingDuration={recordingDuration}
   formatDuration={formatDuration}
+   onLeave={() => {
+    cleanup();  // closes peer connections, removes socket listeners
+  }}
               />
               <LinkSharingCard /> 
               </div>
