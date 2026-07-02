@@ -3,7 +3,7 @@
 // Changes: added  onToggleInvite  prop + "Invite" button in the dropdown menu
 // ────────────────────────────────────────────────────────────────────────────
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import NavMicOpen from '../assets/micOpenIcon.svg';
 import NavMicClose from '../assets/micCloseIcon.svg';
 import DummyCam from '../assets/dummyCam Image.svg';
@@ -179,8 +179,24 @@ const NavigationControl = ({
 
   function handleReaction(emoji) {
     socketRef.current.emit("reaction", { roomId, emoji });
-    setShowReactions(false);
+    // Intentionally NOT closing the picker here — closing on every click forced
+    // the user to reopen it for each emoji, which made it impossible to send
+    // several reactions back-to-back. The picker now stays open until the
+    // emoji button is clicked again or you click elsewhere (see effect below),
+    // so taps register instantly and can stack freely.
   }
+
+  const reactionPickerRef = useRef(null);
+  useEffect(() => {
+    if (!showReactions) return;
+    function handleOutsideClick(e) {
+      if (reactionPickerRef.current && !reactionPickerRef.current.contains(e.target)) {
+        setShowReactions(false);
+      }
+    }
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, [showReactions]);
 
   return (
     <section className='navigationControllerSc'>
@@ -198,7 +214,7 @@ const NavigationControl = ({
             </div>
 
             {/* Emoji reactions */}
-            <div className='iconBtn' style={{ position: "relative" }}>
+            <div className='iconBtn' style={{ position: "relative" }} ref={reactionPickerRef}>
               <img className='img-fluid' src={ReactionEmoji} alt="Emoji" onClick={() => setShowReactions(p => !p)} style={{ cursor: "pointer" }} />
               {showReactions && (
                 <div style={{

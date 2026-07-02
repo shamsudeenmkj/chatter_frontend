@@ -150,6 +150,31 @@
   }
 }
 
+/* ─── Emoji Reaction Burst (Zoom-style flying emojis) ─────────────────────── */
+@keyframes floatUp {
+  0% {
+    opacity: 0;
+    transform: translate(var(--dx, 0px), 0) scale(0.6);
+  }
+  15% {
+    opacity: 1;
+    transform: translate(calc(var(--dx, 0px) * 0.4), -20px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--dx, 0px), -160px) scale(0.9);
+  }
+}
+
+.emojiBurstParticle {
+  position: absolute;
+  left: 50%;
+  bottom: 30%;
+  pointer-events: none;
+  will-change: transform, opacity;
+  animation: floatUp 2.2s ease-out forwards;
+}
+
 /* Responsive */
 @media (max-width: 480px) {
   .form-box {

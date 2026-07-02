@@ -95,10 +95,10 @@ function SignInForm({ onSwitch, autoSignIn }) {
           {errors.password && <p className="error-text">{errors.password}</p>}
         </div>
 
-        <div className="PwdAndNewRegister">
+        {/* <div className="PwdAndNewRegister">
           <a href="" className="forgetPwd">I forgot my password</a>
          
-        </div>
+        </div> */}
 
         <button type="submit" className="signInBtn">
           Sign In

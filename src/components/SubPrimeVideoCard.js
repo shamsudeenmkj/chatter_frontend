@@ -9,6 +9,45 @@ import MicOff from "../assets/micCloseIcon.svg"
 const USERS_PER_PAGE = 25;
 const ASPECT_RATIO = 16 / 9;
 
+// ─── Emoji reaction burst (Zoom-style: several copies flying up) ─────────────
+// `reactionKey` should change on every new reaction (e.g. `${emoji}-${Date.now()}`)
+// so React remounts the burst and replays the animation even for repeated emojis.
+function EmojiBurst({ emoji, reactionKey, large }) {
+  const particles = useMemo(() => {
+    const count = 6 + Math.floor(Math.random() * 5); // 6–10 particles
+    return Array.from({ length: count }, (_, i) => ({
+      id: i,
+      dx: (Math.random() - 0.5) * 220,       // horizontal drift, px — wider spread
+   startX: (Math.random() - 0.5) * 80,    // stagger the starting position too
+      delay: Math.random() * 0.5,            // stagger start, s
+      duration: 1.8 + Math.random() * 0.9,   // vary float speed
+      size: (large ? 34 : 22) + Math.random() * (large ? 18 : 12),
+    }));
+  }, [reactionKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!emoji) return null;
+
+  return (
+    <div key={reactionKey} style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
+      {particles.map(p => (
+        <span
+          key={p.id}
+          className="emojiBurstParticle"
+          style={{
+            "--dx": `${p.dx}px`,
+            left: `calc(50% + ${p.startX}px)`,
+            fontSize: p.size,
+            animationDelay: `${p.delay}s`,
+            animationDuration: `${p.duration}s`,
+          }}
+        >
+          {emoji}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function useGridDimensions(containerRef, userCount) {
   const [dimensions, setDimensions] = useState({ cols: 1, rows: 1 });
   useLayoutEffect(() => {
@@ -308,14 +347,14 @@ if (activeStream && hasVideoTracks) {
           )}
         </div>
 
-        {user.reaction && (
-          <div style={{
-            position: "absolute", bottom: "35%", left: "50%",
-            transform: "translateX(-50%)",
-            fontSize: large ? 60 : 40,
-            animation: "floatUp 2.5s ease-out forwards",
-          }}>{user.reaction}</div>
-        )}
+        {(user.activeReactions || []).map(r => (
+          <EmojiBurst
+            key={r.id}
+            emoji={r.emoji}
+            reactionKey={r.id}
+            large={large}
+          />
+        ))}
 
         {/* Unpin button — only in PINNED mode (not during screen share) */}
         {showUnpin && (
@@ -483,7 +522,19 @@ function LayoutBadge({ mode }) {
   );
 }
 
-export default function SubPrimeVideoCard({ userList = [], activePanel = null, hostId, localUserId }) {
+export default function SubPrimeVideoCard({ userList: rawUserList = [], reactions = [], activePanel = null, hostId, localUserId }) {
+
+  // ── Merge concurrent reaction events onto each user ────────────────────────
+  // `reactions` is a flat list of {id, userId, emoji} that can contain several
+  // entries for the same user at once (rapid multi-emoji sends), so each user
+  // gets an `activeReactions` array instead of a single overwritable slot.
+  const userList = useMemo(() => {
+    if (!reactions.length) return rawUserList;
+    return rawUserList.map(u => {
+      const mine = reactions.filter(r => r.userId === u.userId);
+      return mine.length ? { ...u, activeReactions: mine } : u;
+    });
+  }, [rawUserList, reactions]);
 
   const [pinnedUser, setPinnedUser] = useState(null);
   const [currentPage, setCurrentPage] = useState(0);
@@ -501,7 +552,13 @@ export default function SubPrimeVideoCard({ userList = [], activePanel = null, h
 
   // Screen share always forces stage layout; pin/spotlight apply only when no screen share
 // Change priority: pinnedUser wins over screenSharer
-const mainUser   = pinnedUser  || spotlightUser;
+// const mainUser   = pinnedUser  || spotlightUser;
+
+ const livePinnedUser = pinnedUser
+    ? userList.find(u => u.userId === pinnedUser.userId) || pinnedUser
+    : null;
+  const mainUser   = livePinnedUser || spotlightUser;
+
 const layoutMode = pinnedUser    ? "PINNED"
              
                  : spotlightUser ? "SPOTLIGHT"

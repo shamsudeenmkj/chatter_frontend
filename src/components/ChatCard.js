@@ -460,7 +460,7 @@ const hasUnread = groupUnread > 0 && activeTabIndex !== 1;
                   Chats
                   {hasUnread && (
                     <span style={{ background: "#EF4444", color: "#fff", borderRadius: 20, minWidth: 18, height: 18, fontSize: 10, fontWeight: 700, display: "inline-flex", alignItems: "center", justifyContent: "center", padding: "0 5px" }}>
-                      {unreadCount > 99 ? "99+" : unreadCount}
+    {groupUnread > 99 ? "99+" : groupUnread}
                     </span>
                   )}
                 </span>
@@ -482,7 +482,7 @@ const hasUnread = groupUnread > 0 && activeTabIndex !== 1;
 
                      <div style={{ display:"flex",justifyContent:"center",alignItems:"center",height:"100%"}}>
                   
-                  <p style={{ color: "#aaa", marginTop: 10 }}>No Participants Other Then You</p>
+                  <p style={{ color: "#aaa", marginTop: 10 }}>No Participants Other then You</p>
                   
                 </div>
 
@@ -568,7 +568,10 @@ const mine = msg.senderId === (mySocketIdRef.current || socketRef.current?.id);
       return (
         <div key={i} style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start" }}>
           <div className="privateChatBgColor" style={{ marginBottom: 6, position: "relative", zIndex: 1 }}>
-            <p className="privateChatUserName"><b>{msg.userName || msg.name}</b></p>
+            <p className="privateChatUserName"><b>{msg.userName || msg.name}        {msg.sentAt
+    ? new Date(msg.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : msg.time || ''}</b>  </p>
+           
             {msg._isFile || msg.fileUrl ? (   // ← check fileUrl too, not just _isFile
               <FileBubble msg={msg} />
             ) : (

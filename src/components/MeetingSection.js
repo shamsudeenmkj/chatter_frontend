@@ -89,8 +89,10 @@ const pendingWritesRef = useRef(0);
 const recordingStartTimeRef = useRef(null);
 const [groupMessages, setGroupMessages] = useState([]);
 const [groupUnread, setGroupUnread]     = useState(0);
+const [activeReactions, setActiveReactions] = useState([]); // [{id, userId, emoji}]
 const activePanelRef = useRef(activePanel);
 const lastSentFileMessageIdRef = useRef(null);
+const reactionTimersRef = useRef({});
 
 
 const [activePoll, setActivePoll]   = useState(null);
@@ -693,26 +695,21 @@ socket.on('all-users', ({ users, host, waitingRoom: wr }) => {
   );
 });
 
-socket.on("reaction", ({ userId, emoji }) => {
-  console.log("emoji ==>",emoji)
-  setRemoteUsers(prev =>
-    prev.map(user =>
-      user.userId === userId
-        ? { ...user, reaction: emoji }
-        : user
-    )
-  );
+// ── Reaction events ─────────────────────────────────────────────────────────
+// A list of {id, userId, emoji} rather than one slot per user — this lets the
+// same person (or several people) fire off multiple emojis back-to-back and
+// see every burst play out independently instead of each new one cancelling
+// the last.
 
-  // remove after 3 seconds
-  setTimeout(() => {
-    setRemoteUsers(prev =>
-      prev.map(user =>
-        user.userId === userId
-          ? { ...user, reaction: null }
-          : user
-      )
-    );
-  },4000);
+socket.on("reaction", ({ userId, emoji }) => {
+  const id = `${userId}-${emoji}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  setActiveReactions(prev => [...prev, { id, userId, emoji }]);
+
+  const timer = setTimeout(() => {
+    setActiveReactions(prev => prev.filter(r => r.id !== id));
+    delete reactionTimersRef.current[id];
+  }, 2600);
+  reactionTimersRef.current[id] = timer;
 });
 
 // In setupAndJoin, listen for waiting room updates:
@@ -1142,10 +1139,11 @@ function formatDuration(secs) {
         screenStream: isSharing ? mainVideo : null,
         isScreenSharing: isSharing,
         muted: isMicMuted,
-        authId: myAuthId
+        authId: myAuthId,
       },
       ...remoteUsers
     ]}
+    reactions={activeReactions}
     activePanel={activePanel}
 
     hostId={hostId}  
@@ -1420,5 +1418,6 @@ waitingCount={isHost ? waitingRoom.length : 0}
       </div>
     </section>
   );
+
 };
 export default MeetingSection;
