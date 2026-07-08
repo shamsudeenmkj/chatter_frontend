@@ -507,7 +507,7 @@ const hasUnread = groupUnread > 0 && activeTabIndex !== 1;
 
                      <div style={{ display:"flex",justifyContent:"center",alignItems:"center",height:"100%"}}>
                   
-                  <p style={{ color: "#aaa", marginTop: 10 }}>No Participants Other then You</p>
+                  <p style={{ color: "#aaa", marginTop: 10 }}>No Participants Other than You</p>
                   
                 </div>
 
