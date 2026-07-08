@@ -445,8 +445,8 @@ const MeetingDetails = () => {
         </div>
 
         {/* ── Two-column split: left = overview/stats, right = tabs/content ── */}
-        <div style={s.splitLayout}>
-          <div style={s.leftCol}>
+        <div className='roomIdAndDetailsAndParticipantsWholeCnt' style={s.splitLayout}>
+          <div className='roomIdCardCnt' style={s.leftCol}>
             {/* ── Overview Card ── */}
         <div style={s.overviewCard}>
           <div style={s.overviewRow}>
@@ -462,7 +462,7 @@ const MeetingDetails = () => {
           <div style={s.overviewRow}>
             <span style={s.overviewLabel}>Meeting Link</span>
             <div style={s.copyRowVal}>
-              <span style={s.linkText}>{joinLink}</span>
+              <span className='meetingLinkTxt' style={s.linkText}>{joinLink}</span>
               <button style={s.copyBtnPrimary} onClick={() => copyToClipboard(joinLink, "link")}>
                 <LinkIcon /> {copiedKey === "link" ? "Copied!" : "Copy meet link"}
               </button>
@@ -498,8 +498,8 @@ const MeetingDetails = () => {
         </div>
 
         {/* ── Stats Row ── */}
-        <div style={s.statsRow}>
-          <div style={s.statCard}>
+        <div className='countCardsWholeCnt' style={s.statsRow}>
+          <div className='countCardsCnt' style={s.statCard}>
             <div style={{ ...s.statIconWrap, color: "#004ECC", background: "#EFF6FF" }}><UsersIcon size={15} /></div>
             <span style={s.statValue}>{uniqueParticipantCount}</span>
             <span style={s.statLabel}>
@@ -509,17 +509,17 @@ const MeetingDetails = () => {
               )}
             </span>
           </div>
-          <div style={s.statCard}>
+          <div className='countCardsCnt' style={s.statCard}>
             <div style={{ ...s.statIconWrap, color: "#10B981", background: "#ECFDF5" }}><PeakIcon size={15} /></div>
             <span style={s.statValue}>{report.peakConcurrent ?? 0}</span>
             <span style={s.statLabel}>Peak Concurrent</span>
           </div>
-          <div style={s.statCard}>
+          <div className='countCardsCnt' style={s.statCard}>
             <div style={{ ...s.statIconWrap, color: "#8B5CF6", background: "#F5F3FF" }}><ChatIcon size={15} /></div>
             <span style={s.statValue}>{publicChat.length + privateChat.length}</span>
             <span style={s.statLabel}>Chat Messages</span>
           </div>
-          <div style={s.statCard}>
+          <div className='countCardsCnt' style={s.statCard}>
             <div style={{ ...s.statIconWrap, color: "#F59E0B", background: "#FFF7ED" }}><PollIcon size={15} /></div>
             <span style={s.statValue}>{polls.length}</span>
             <span style={s.statLabel}>Polls Created</span>
@@ -528,9 +528,9 @@ const MeetingDetails = () => {
 
           </div>
 
-          <div style={s.rightCol}>
+          <div className='detailedParticipantsCnt' style={s.rightCol}>
             {/* ── Tab bar ── */}
-        <div style={s.tabBar}>
+        <div className='tabsOfDetailsCnt' style={s.tabBar}>
           {tabs.map((t) => (
             <button
               key={t.key}
@@ -556,7 +556,7 @@ const MeetingDetails = () => {
                 const open = !!openParticipants[key];
                 return (
                   <div key={key} style={s.participantCard}>
-                    <div
+                    <div className='individuallyJoinedPInfoCnt'
                       style={{ ...s.participantCardHead, cursor: hasMultipleSessions ? "pointer" : "default" }}
                       onClick={hasMultipleSessions ? () => toggleParticipant(key) : undefined}
                     >

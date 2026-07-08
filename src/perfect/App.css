@@ -172,11 +172,6 @@ gap: 0;
     background-color: #161929;
     border-radius: 10px;
     padding: 8px 12px;
-
-     max-width: 260px;
-     overflow-wrap: break-word;
-     word-break: break-word;
-     white-space: pre-wrap;
 }
 .commonChatPollHt{
     height: 330px;
@@ -638,11 +633,6 @@ border: none !important;
     border-radius: 10px;
     padding: 8px 12px;
     width: fit-content;
-
-     max-width: 260px;
-     overflow-wrap: break-word;
-     word-break: break-word;
-     white-space: pre-wrap;
 }
 .alteredToggleBnt[aria-checked="true"] span{
     transform: translateX(2px) !important;
@@ -800,12 +790,47 @@ label {
 .singleDayAndDateIconAndTitleCnt{
     flex-direction: column;
 }
+
+.timeSlot{
+    font-size: 16px;
+    font-weight: 700;
+    color: rgb(59, 130, 246);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    padding: 14px 20px;
+}
+.timeColumn{
+    padding: 8px 12px;
+    max-height: 460px;
+    overflow-y: scroll;
+}
+.singleDayAndDateCnt{
+    border-left: 1px solid rgb(229, 231, 235);
+}
+.individualDate{
+    max-height: 70vh;
+}
+@media (min-width: 1400px){
+    .individualDate{
+        max-height: 80vh;
+    }
+}
 @media (min-width: 1200px) {
     .container{
         max-width: 1330px !important;
     }
 }
 @media screen and (min-width: 992px) and (max-width: 1199.9px){
+    /* New CSS */
+    .roomIdAndDetailsAndParticipantsWholeCnt{
+        gap: 12px !important;
+    }
+    .roomIdCardCnt{
+        max-width: 350px !important;
+    }
+    .detailedParticipantsCnt .tabsOfDetailsCnt{
+        gap: 0px !important;
+    }
     .topRowNumAndIcon{
         flex-direction: column;
     }
@@ -838,13 +863,29 @@ label {
     }
 }
 @media screen and (min-width: 768px) and (max-width: 991.9px){
+    .roomIdAndDetailsAndParticipantsWholeCnt{
+        flex-direction: column !important;
+    }
+    .roomIdCardCnt{
+        max-width: fit-content !important;
+        position: relative !important;
+        top: 0 !important;
+    }
+    .detailedParticipantsCnt{
+        width: 100%;
+    }
+    .countCardsCnt{
+        flex-direction: row !important;
+    gap: 10px !important;
+    align-items: center !important;
+    }
     .sideListParentCnt{
             width: 100% !important;
     max-height: fit-content !important;
     }
-    .topRowNumAndIcon svg,img{
+    /* .topRowNumAndIcon svg,img{
         display: none;
-    }
+    } */
     .sideListParentCnt .listWrapCnt{
         flex-direction: row !important;
     flex-wrap: wrap;
@@ -881,13 +922,41 @@ label {
     }
 }
 @media screen and (min-width: 576px) and (max-width: 767.9px){
+    .myMeetJoinBtn{
+        font-size: 12px !important;
+    }
+    .createmBtn{
+        font-size: 12px !important;
+    }
+    .roomIdAndDetailsAndParticipantsWholeCnt{
+        flex-direction: column !important;
+    }
+    .roomIdCardCnt{
+        max-width: fit-content !important;
+        position: relative !important;
+        top: 0 !important;
+    }
+    .detailedParticipantsCnt{
+        width: 100%;
+    }
+    .countCardsCnt{
+        flex-direction: row !important;
+    gap: 10px !important;
+    align-items: center !important;
+    }
+    .tabsOfDetailsCnt{
+        flex-wrap: nowrap !important;
+    overflow-x: scroll !important;
+    white-space: nowrap !important;
+    }
+
     .sideListParentCnt{
             width: 100% !important;
     max-height: fit-content !important;
     }
-    .topRowNumAndIcon svg,img{
+    /* .topRowNumAndIcon svg,img{
         display: none;
-    }
+    } */
     .sideListParentCnt .listWrapCnt{
         flex-direction: row !important;
     flex-wrap: wrap;
@@ -961,6 +1030,40 @@ label {
     }
 }
 @media (max-width: 575.9px){
+    .IndDateOne{
+        width: 80px !important;
+    }
+    .IndDateThree{
+        width: 80px !important;
+    }
+    .myMeetJoinBtn{
+        font-size: 12px !important;
+    }
+    .createmBtn{
+        font-size: 12px !important;
+    }
+    .roomIdAndDetailsAndParticipantsWholeCnt{
+        flex-direction: column !important;
+    }
+    .roomIdCardCnt{
+        max-width: fit-content !important;
+        position: relative !important;
+        top: 0 !important;
+    }
+    .detailedParticipantsCnt{
+        width: 100%;
+    }
+    .countCardsCnt{
+        flex-direction: row !important;
+    gap: 10px !important;
+    align-items: center !important;
+    }
+    .tabsOfDetailsCnt{
+        flex-wrap: nowrap !important;
+    overflow-x: scroll !important;
+    white-space: nowrap !important;
+    }
+
     .overAllSingleDayAndDateCnt{
         min-height: 250px !important;
 }
@@ -968,9 +1071,9 @@ label {
             width: 100% !important;
     max-height: fit-content !important;
     }
-    .topRowNumAndIcon svg,img{
+    /* .topRowNumAndIcon svg,img{
         display: none;
-    }
+    } */
     .sideListParentCnt .listWrapCnt{
         flex-direction: row !important;
     flex-wrap: wrap;
@@ -1080,6 +1183,21 @@ label {
     }
 }
 @media (max-width: 460.9px){
+    .roomIdCardCnt .meetingLinkTxt{
+            max-width: fit-content !important;
+    white-space: normal !important;
+    }
+    .countCardsWholeCnt{
+        grid-template-columns: repeat(1, 1fr) !important;
+    }
+    .tabsOfDetailsCnt{
+        gap: 0px !important;
+    }
+    .individuallyJoinedPInfoCnt{
+        flex-direction: column !important;
+        align-items: flex-start !important;
+    }
+
     .dateMonthWeekSorterCnt{
         flex-direction: column-reverse;
     }

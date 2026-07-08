@@ -161,7 +161,7 @@ const SidePanel = ({ meetings, onClose, currentUser, onJoin }) => {
 
             
               {canJoin && (
-                <button style={P.joinBtn} onClick={() => onJoin(m)}>
+                <button className="myMeetJoinBtn" style={P.joinBtn} onClick={() => onJoin(m)}>
                   {isHost ? (isInstant ? "Join" : "Join") : "Join"} Meeting
                 </button>
               )}
@@ -338,6 +338,16 @@ const MV = {
   },
 };
 
+
+const getHours = (d) => {
+  const start = new Date(d);
+  start.setHours(0, 0, 0, 0);
+  return Array.from({ length: 24 }, (_, i) => {
+    const day = new Date(start);
+    day.setHours(i, 0, 0, 0);
+    return day;
+  });
+};
 /* ─── WEEK VIEW ───────────────────────────────────────────────────────────── */
 // Image 4 & 6: left column = day name (e.g. "Sun") in blue thin label,
 // then the row content area with icon + meeting label on the right side
@@ -357,7 +367,7 @@ const WeekView = ({ currentDate, meetings, today, selectedDay, onSelect }) => {
   const todayNorm = new Date(today); todayNorm.setHours(0,0,0,0);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column" }}>
+    <div className="testNew" style={{ display: "flex", flexDirection: "column" }}>
       {days.map((date, i) => {
         const dm = getMeetingsForDay(meetings, date);
         const isToday = sameDay(date, todayNorm);
@@ -452,8 +462,7 @@ const WV = {
 };
 
 /* ─── DAY VIEW ────────────────────────────────────────────────────────────── */
-// Image 2: Large date number (very big, light weight) on the left column,
-// day name above in blue. Content area is very spacious/tall.
+// Large date number on the left, 24-hour timeline on the right with meeting indicators
 const DayView = ({ currentDate, meetings, today, selectedDay, onSelect }) => {
   const todayNorm = new Date(today); todayNorm.setHours(0,0,0,0);
   const dm = getMeetingsForDay(meetings, currentDate);
@@ -463,27 +472,46 @@ const DayView = ({ currentDate, meetings, today, selectedDay, onSelect }) => {
   const hasMtg = dm.length > 0;
   const pastMtg = hasMtg && isPast;
 
-  let bg = "#EFF6FF"; // Day view always shows the blue-tinted bg as per image 2
-  if (hasMtg && !isPast) bg = "#EFF6FF";
-  else if (hasMtg && isPast) bg = "#FEF2F2";
-  if (!hasMtg) bg = "#EFF6FF";
+  // Generate 24-hour time slots
+  const hours = Array.from({ length: 24 }, (_, i) => {
+    const hour = i;
+    const ampm = hour < 12 ? "AM" : "PM";
+    const display = hour === 0 ? "12 AM" : hour <= 12 ? `${hour} AM` : `${hour - 12} PM`;
+    return { hour, display };
+  });
+
+  // Check which hours have meetings
+  const hoursWithMeetings = new Set();
+  dm.forEach((m) => {
+    if (m.scheduledAt) {
+      const mTime = new Date(m.scheduledAt);
+      const mHour = mTime.getHours();
+      const duration = m.durationMinutes || 60;
+      for (let i = 0; i < Math.ceil(duration / 60); i++) {
+        hoursWithMeetings.add(mHour + i);
+      }
+    }
+  });
+
+  let bg = "#EFF6FF";
+  if (hasMtg && isPast) bg = "#FEF2F2";
   if (isSel) bg = "#EFF6FF";
 
   return (
-    <div className="overAllSingleDayAndDateCnt"
+    <div className="individualDate"
       onClick={() => hasMtg && onSelect(currentDate)}
       style={{
         display: "flex",
-        alignItems: "center",
-        minHeight: 460,  // tall as per image 2
+        alignItems: "stretch",
+        minHeight: "100%",
         background: bg,
         border: isSel ? "1.5px solid #004ECC" : "none",
         cursor: hasMtg ? "pointer" : "default",
       }}
     >
-      {/* Left label column */}
-      <div className="singleDayAndDateCnt" style={DV.label}>
-        <span className="singleDay" style={{
+      {/* Left label column — large date */}
+      <div className="IndDateOne" style={DV.label}>
+        <span style={{
           fontSize: 14, fontWeight: 700,
           color: isToday ? "#004ECC" : "#3B82F6",
           textTransform: "uppercase",
@@ -501,21 +529,42 @@ const DayView = ({ currentDate, meetings, today, selectedDay, onSelect }) => {
         </span>
       </div>
 
-      {/* Content */}
-      <div className="singleDayAndDateIconAndTitleCnt" style={DV.content}>
-        {hasMtg && (
-          <>
-            <DayIcon count={dm.length} isPast={pastMtg} />
-            <span style={DV.title}>
-              {dm.length === 1 ? (dm[0].title || "Meeting") : `Meetings : ${dm.length}`}
-            </span>
-          </>
-        )}
+      {/* Right: 24-hour timeline */}
+      <div style={DV.timeline}>
+        <div style={DV.hoursContainer}>
+          {hours.map(({ hour, display }) => {
+            const hasMeeting = hoursWithMeetings.has(hour);
+            return (
+              <div
+                key={hour}
+                style={{
+                  ...DV.hourSlot,
+                  background: hasMeeting ? (pastMtg ? "#FEE2E2" : "#DCFCE7") : "transparent",
+                  borderLeft: hasMeeting ? `3px solid ${pastMtg ? "#EF4444" : "#10B981"}` : "none",
+                }}
+              >
+                <span style={DV.hourLabel}>{display}</span>
+                {hasMeeting && (
+                  <span style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    background: pastMtg ? "#EF4444" : "#10B981",
+                  }} />
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
+      {/* Summary on far right */}
       {hasMtg && (
-        <div style={{ paddingRight: 28 }}>
-          <PlusCircle color={pastMtg ? "#EF4444" : dm.length > 1 ? "#10B981" : "#3B82F6"} />
+        <div className="IndDateThree" style={DV.summary}>
+          <DayIcon count={dm.length} isPast={pastMtg} />
+          <span style={DV.summaryTitle}>
+            {dm.length === 1 ? (dm[0].title || "Meeting") : `${dm.length} Meetings`}
+          </span>
         </div>
       )}
     </div>
@@ -533,15 +582,51 @@ const DV = {
     borderRight: "1px solid #E5E7EB",
     gap: 4,
     alignSelf: "stretch",
+    padding: "20px 0",
   },
-  content: {
+  timeline: {
     flex: 1,
-    padding: "0 28px",
+    padding: "12px 20px",
+    overflowY: "auto",
+    maxHeight: "100%",
+  },
+  hoursContainer: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 0,
+  },
+  hourSlot: {
+    padding: "12px 16px",
     display: "flex",
     alignItems: "center",
-    gap: 12,
+    justifyContent: "space-between",
+    borderBottom: "1px solid #F3F4F6",
+    transition: "background-color 0.2s",
   },
-  title: { fontSize: 15, color: "#374151", fontWeight: 500 },
+  hourLabel: {
+    fontSize: 12,
+    fontWeight: 500,
+    color: "#6B7280",
+    minWidth: 60,
+  },
+  summary: {
+    width: 180,
+    flexShrink: 0,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    borderLeft: "1px solid #E5E7EB",
+    padding: "20px 16px",
+    gap: 12,
+    textAlign: "center",
+  },
+  summaryTitle: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: "#374151",
+    lineHeight: 1.4,
+  },
 };
 
 /* ─── MAIN ────────────────────────────────────────────────────────────────── */
@@ -697,27 +782,10 @@ export default function MyMeetings() {
           <p style={{ textAlign: "center", color: "#9CA3AF", marginTop: 60 }}>Loading meetings…</p>
         ) : (
           <div style={S.card}>
-            {/* Nav bar — always full width, X button appears here when panel open */}
-            {/* <div className="monthAndYearCnt" style={S.navBar}>
-              <button style={S.navBtn} onClick={() => navigate_cal(-1)}><ChevL /></button>
-              <div style={S.navLabel}>
-                <span style={S.navMonth}>{headerLabel}</span>
-                <span style={S.navYear}>{currentDate.getFullYear()}</span>
-              </div> */}
-              {/* Right side of nav: X close button when panel open, else chevron */}
-              {/* {panelOpen ? (
-                <button style={S.navCloseBtn} onClick={closePanel}>
-                  <XIcon />
-                </button>
-              ) : (
-                <button style={S.navBtn} onClick={() => navigate_cal(1)}><ChevR /></button>
-              )}
-            </div> */}
-
             {/* Calendar body + side panel side by side */}
             <div className="meetingListAndCalendarCnt" style={{ display: "flex", alignItems: "stretch" }}>
               {/* Calendar content — shrinks when panel open */}
-              <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="test"  style={{ flex: 1, minWidth: 0 }}>
                 {view === "month" && (
                   <MonthView
                     year={currentDate.getFullYear()}
@@ -729,7 +797,7 @@ export default function MyMeetings() {
                   />
                 )}
                 {view === "week" && (
-                  <WeekView
+                  <WeekView 
                     currentDate={currentDate}
                     meetings={meetings}
                     today={today}
@@ -738,7 +806,7 @@ export default function MyMeetings() {
                   />
                 )}
                 {view === "day" && (
-                  <DayView
+                  <DayView 
                     currentDate={currentDate}
                     meetings={meetings}
                     today={today}
@@ -814,7 +882,6 @@ const S = {
     color: "#374151", display: "flex", alignItems: "center",
     padding: "4px 6px", borderRadius: 6,
   },
-  // X close button replaces the right chevron when panel is open
   navCloseBtn: {
     background: "none", border: "none", cursor: "pointer",
     color: "#374151", display: "flex", alignItems: "center",

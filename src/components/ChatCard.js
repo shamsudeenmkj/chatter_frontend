@@ -19,6 +19,30 @@ function makePrivateRoomId(idA, idB) {
   return [idA, idB].sort().join("_");
 }
 
+
+// ─── Helper: format a timestamp using the machine's actual local time ─────────
+// NOTE: We deliberately avoid toLocaleTimeString()/Intl here. Inside embedded
+// webviews the JS engine is often built with "small-icu", which only ships
+// timezone data for UTC — so toLocaleTimeString() silently renders everything
+// in UTC no matter what the OS clock says. Date.getHours()/getMinutes() always
+// reflect the OS's real local time regardless of ICU support, so we build the
+// string manually instead of trusting Intl to do it.
+function formatLocalTime(iso) {
+  if (!iso) return "";
+  let normalized = iso;
+  if (typeof iso === "string" && !/Z$|[+-]\d{2}:?\d{2}$/.test(iso)) {
+    normalized = iso + "Z";
+  }
+  const d = new Date(normalized);
+  if (isNaN(d.getTime())) return "";
+  let h = d.getHours();
+  const m = String(d.getMinutes()).padStart(2, "0");
+  const ampm = h >= 12 ? "PM" : "AM";
+  h = h % 12;
+  if (h === 0) h = 12;
+  return `${h}:${m} ${ampm}`;
+}
+
 // ─── File bubble ──────────────────────────────────────────────────────────────
 function FileBubble({ msg }) {
   const isImage = msg.kind === "image" || (msg.fileMimeType || "").startsWith("image/");
@@ -98,7 +122,7 @@ const ChatCard = ({
   defaultTabIndex = 0,
   groupMessages: groupMessagesProp, setGroupMessages: setGroupMessagesProp,
   lastSentFileMessageIdRef: lastSentFileMessageIdRefProp,  groupUnread = 0,           // ← add
-  onClearGroupUnread, activeChatTabRef,   
+  onClearGroupUnread, activeChatTabRef, activePrivateUserRef,   
 
    activePoll: activePollProp,
   setActivePoll: setActivePollProp,
@@ -184,6 +208,7 @@ const setMyVote     = setMyVoteProp     ?? _setLocalMyVote;
   // ── Keep activePrivateRef in sync ─────────────────────────────────────────
   useEffect(() => {
     activePrivateRef.current = activePrivateUser;
+    if (activePrivateUserRef) activePrivateUserRef.current = activePrivateUser;
   }, [activePrivateUser]);
 
   // ── Socket listeners ───────────────────────────────────────────────────────
@@ -565,12 +590,17 @@ const hasUnread = groupUnread > 0 && activeTabIndex !== 1;
 
       // ✅ CORRECT
 const mine = msg.senderId === (mySocketIdRef.current || socketRef.current?.id);
+
+console.log("printer private== > ",msg.sentAt," ==> ",msg.time," ==> ",msg)
       return (
         <div key={i} style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start" }}>
           <div className="privateChatBgColor" style={{ marginBottom: 6, position: "relative", zIndex: 1 }}>
             <p className="privateChatUserName"><b>{msg.userName || msg.name}        {msg.sentAt
-    ? new Date(msg.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    ? formatLocalTime(msg.sentAt)
     : msg.time || ''}</b>  </p>
+
+
+    
            
             {msg._isFile || msg.fileUrl ? (   // ← check fileUrl too, not just _isFile
               <FileBubble msg={msg} />
@@ -624,7 +654,7 @@ const mine = msg.senderId === (mySocketIdRef.current || socketRef.current?.id);
                const mine =
   (msg._myUserId && msg.senderId === msg._myUserId) ||
   (msg.id && msg.id === socketRef.current?.id)
-                      console.log("mine => ", msg.id,"  =>  ", msg.senderId ,"  =>  ",socketRef.current?.id)
+// console.log("printer public== > ",msg," ==> ",msg.time)
 
                 return (
                   <div className="participantsChatCnt" key={i} style={{ justifyContent: mine ? "flex-end" : "flex-start" }}>
@@ -636,7 +666,7 @@ const mine = msg.senderId === (mySocketIdRef.current || socketRef.current?.id);
 
 <p className="timer">
   {msg.sentAt
-    ? new Date(msg.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    ? formatLocalTime(msg.sentAt)
     : msg.time || ''}
 </p>
 
